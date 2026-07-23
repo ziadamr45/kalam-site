@@ -168,13 +168,16 @@ ${analyticsScript}
 }
 
 // ── Article card ─────────────────────────────────────────────────────────────
+// NOTE: HTML forbids nesting <a> inside <a> — browsers auto-close the outer
+// <a> when they hit the inner one, breaking the card layout. So the inner
+// category link is rendered as a <span> with role=link + JS navigation.
 function card(a, depth = 0) {
   const href = depth === 0 ? `articles/${a.slug}` : a.slug;
   const catHref = depth === 0 ? `category/${a.categorySlug}` : `../category/${a.categorySlug}`;
   return `<a class="card" href="${href}" data-slug="${escAttr(a.slug)}">
   <div class="card-top">
     <span class="card-icon" aria-hidden="true">${a.icon}</span>
-    <div class="card-tags">${levelBadge(a.level)}<a class="card-tag" href="${catHref}" onclick="event.stopPropagation()">${a.tag}</a></div>
+    <div class="card-tags">${levelBadge(a.level)}<span class="card-tag" role="link" tabindex="0" data-href="${escAttr(catHref)}" onclick="event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')" onkeypress="if(event.key==='Enter'){event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')}">${a.tag}</span></div>
   </div>
   <h3>${a.title}</h3>
   <p>${a.excerpt}</p>
