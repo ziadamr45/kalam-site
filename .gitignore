@@ -1,0 +1,15 @@
+# dependencies
+node_modules/
+
+# local env (NEVER commit secrets)
+.env
+.env.local
+.env.*.local
+
+# build output (regenerated on every build)
+site/
+
+# misc
+.DS_Store
+*.log
+npm-debug.log*

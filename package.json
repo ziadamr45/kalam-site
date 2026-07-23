@@ -1,0 +1,14 @@
+{
+  "name": "kalam-lh-lazma",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "node generate-site.js",
+    "dev": "node generate-site.js && npx serve site"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "notion-to-md": "^3.1.1",
+    "marked": "^9.1.6",
+    "dotenv": "^16.4.5"
+  }
+}
