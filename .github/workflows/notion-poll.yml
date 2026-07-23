@@ -1,0 +1,121 @@
+name: Notion → Vercel instant rebuild
+
+# ----------------------------------------------------------------------------
+# Polls the Notion database every 10 minutes for recently-edited articles.
+# If any published article (منشور = true) was edited in the last 15 min,
+# triggers the Vercel deploy hook → site rebuilds within ~1 min.
+#
+# This is required because the Notion API does NOT support native webhooks
+# on the free plan — polling is the cheapest reliable alternative.
+# ----------------------------------------------------------------------------
+
+on:
+  schedule:
+    # Every 10 minutes. GitHub Actions cron is best-effort and may be delayed
+    # by ~5 min during peak hours, but typical latency is 1-3 min.
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notion-poll
+  cancel-in-progress: false
+
+jobs:
+  poll-and-rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    env:
+      NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+      NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+      DEPLOY_HOOK_URL: ${{ secrets.DEPLOY_HOOK_URL }}
+
+    steps:
+      - name: Check required secrets
+        id: check
+        run: |
+          if [ -z "$NOTION_TOKEN" ] || [ -z "$NOTION_DATABASE_ID" ] || [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "::warning::Missing one of NOTION_TOKEN / NOTION_DATABASE_ID / DEPLOY_HOOK_URL secrets — skipping poll."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Query Notion for recently-edited published articles
+        if: steps.check.outputs.skip != 'true'
+        id: notion
+        run: |
+          set -euo pipefail
+
+          # 15-minute lookback window (in ISO-8601 with milliseconds, Notion format)
+          SINCE=$(python3 -c "from datetime import datetime,timezone,timedelta; print((datetime.now(timezone.utc) - timedelta(minutes=15)).strftime('%Y-%m-%dT%H:%M:%S.000Z'))")
+          echo "Looking for articles edited since: $SINCE"
+
+          RESPONSE=$(curl -s -X POST "https://api.notion.com/v1/databases/${NOTION_DATABASE_ID}/query" \
+            -H "Authorization: Bearer ${NOTION_TOKEN}" \
+            -H "Notion-Version: 2022-06-28" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"filter\": {
+                \"and\": [
+                  { \"property\": \"منشور\", \"checkbox\": { \"equals\": true } },
+                  { \"timestamp\": \"last_edited_time\", \"last_edited_time\": { \"on_or_after\": \"$SINCE\" } }
+                ]
+              },
+              \"sorts\": [{ \"timestamp\": \"last_edited_time\", \"direction\": \"descending\" }],
+              \"page_size\": 5
+            }")
+
+          # Count edited pages (results array length)
+          COUNT=$(echo "$RESPONSE" | python3 -c "
+          import json,sys
+          try:
+              d = json.load(sys.stdin)
+              print(len(d.get('results', [])))
+          except Exception:
+              print(0)
+          ")
+          echo "Edited published articles in last 15 min: $COUNT"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+
+          if [ "$COUNT" = "0" ]; then
+            echo "::notice::No Notion changes detected — skipping deploy."
+          else
+            echo "::notice::Notion changes detected — will trigger Vercel deploy hook."
+            # Extract titles for the job summary
+            echo "$RESPONSE" | python3 -c "
+            import json,sys
+            d = json.load(sys.stdin)
+            for r in d.get('results', []):
+                t = r.get('properties', {}).get('العنوان', {})
+                title = ''.join([x.get('plain_text','') for x in t.get('title', [])]) if t.get('title') else '?'
+                edited = r.get('last_edited_time', '?')
+                print(f'- {title}  (last edited: {edited})')
+            " >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Trigger Vercel deploy hook
+        if: steps.check.outputs.skip != 'true' && steps.notion.outputs.count != '0'
+        run: |
+          set -euo pipefail
+          echo "Triggering Vercel deploy hook..."
+          RESPONSE=$(curl -s -X POST "$DEPLOY_HOOK_URL" \
+            -H "Content-Type: application/json" \
+            -d '{}')
+          echo "Vercel response: $RESPONSE"
+          JOB_STATE=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('job',{}).get('state','UNKNOWN'))")
+          echo "::notice::Vercel deploy hook accepted — job state: $JOB_STATE"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "## ✅ Vercel deploy triggered" >> "$GITHUB_STEP_SUMMARY"
+          echo "Job state: \`$JOB_STATE\` — site will rebuild within ~1 min." >> "$GITHUB_STEP_SUMMARY"
+          echo "Live URL: https://kalaam-site.vercel.app" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Summary (no changes)
+        if: steps.check.outputs.skip != 'true' && steps.notion.outputs.count == '0'
+        run: |
+          echo "## ✅ No Notion changes" >> "$GITHUB_STEP_SUMMARY"
+          echo "Last poll: $(date -u '+%Y-%m-%d %H:%M:%S UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "Site not rebuilt — no changes detected in last 15 min." >> "$GITHUB_STEP_SUMMARY"
