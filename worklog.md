@@ -23,3 +23,45 @@ Stage Summary:
 - Fonts ready: 4 Latin woff2 files in src/fonts/ (Inter + Source Serif 4, Latin + Latin-ext subsets)
 - CSS ready: shared stylesheet works RTL + LTR via logical properties, English fonts swap in via [lang="en"]
 - Next: refactor generate-site.js to (a) load locales, (b) extract English body from Notion "English Version" toggle, (c) generate /en/ pages, (d) add language switcher, hreflang, sitemap, RSS, JSON-LD inLanguage
+
+---
+Task ID: i18n-2
+Agent: main
+Task: Deploy + verify bilingual site live on kalaam-site.vercel.app
+
+Work Log:
+- Committed all i18n changes (generate-site.js, src/style.css, src/fonts/{inter,source-serif-4}-la*.woff2, locales/ar.json, locales/en.json)
+- Pushed to GitHub (commit cadb27f)
+- Triggered Vercel deploy hook → deployment completed
+- Verified live URLs (all return 200):
+  - https://kalaam-site.vercel.app/ (AR homepage, lang="ar" dir="rtl") — unchanged
+  - https://kalaam-site.vercel.app/en/ (EN homepage, lang="en" dir="ltr") — NEW
+  - https://kalaam-site.vercel.app/articles/forgiveness (AR article, hreflang to /en/articles/forgiveness)
+  - https://kalaam-site.vercel.app/en/articles/forgiveness (EN article, hreflang to /articles/forgiveness)
+  - https://kalaam-site.vercel.app/en/rss.xml (EN RSS, language=en, 3 items)
+  - https://kalaam-site.vercel.app/en/search-index.json (EN search index, 3 translated articles)
+  - https://kalaam-site.vercel.app/fonts/inter-la.woff2 (200, 48KB)
+  - https://kalaam-site.vercel.app/fonts/source-serif-4-la.woff2 (200, 122KB)
+- Verified lang switcher targets:
+  - AR homepage → /en/
+  - AR article → /en/articles/{slug} (when translated)
+  - EN homepage → /
+  - EN article → /articles/{slug}
+- Verified hreflang alternate tags on both AR + EN pages (ar ↔ en ↔ x-default=ar)
+- Verified JSON-LD inLanguage correct per page (ar / en)
+- Verified EN article hides tashkeel button + exercises section (Arabic-only features)
+- Verified EN verse-en/hadith-en blockquotes rendered correctly with <cite> for citations
+- Verified EN article "Written by Ziad Amr" + "X min read" (English labels)
+- Verified EN homepage shows only 3 translated articles (no broken links to untranslated)
+- Verified EN category pages work (only categories with translated articles)
+
+Stage Summary:
+- Full bilingual site live: AR at / (unchanged), EN at /en/ (new)
+- All 3 current articles translated and live in both languages
+- Language switcher bidirectional with smart fallback (untranslated article → /en/ home)
+- hreflang alternate tags + sitemap entries with xhtml:link alternates
+- Per-language RSS feed + search index + JSON-LD inLanguage
+- Self-hosted Inter + Source Serif 4 fonts on EN, Amiri + Tajawal on AR
+- Shared CSS via logical properties (margin/padding/border/text-align inline-*) — works RTL + LTR
+- App.js runtime localized via window.SITE_LANG + window.SITE_I18N
+- New Notion articles auto-work: if "العنوان EN" + "English Version" toggle exist + published=true → EN pages generated automatically with same slug
