@@ -22,6 +22,53 @@ const DB_ID = process.env.NOTION_DATABASE_ID;
 // Production base URL (used for canonical, sitemap, RSS, OG)
 const SITE_URL = (process.env.SITE_URL || 'https://kalaam-site.vercel.app').replace(/\/$/, '');
 
+// ── i18n: load locale strings ────────────────────────────────────────────────
+const LOCALES = {
+  ar: JSON.parse(fs.readFileSync(path.join(__dirname, 'locales', 'ar.json'), 'utf8')),
+  en: JSON.parse(fs.readFileSync(path.join(__dirname, 'locales', 'en.json'), 'utf8')),
+};
+// Deep getter: t('ar', 'article.readingTime', { n: 5 }) → "٥ دقايق قراءة"
+function t(lang, key, params) {
+  const parts = key.split('.');
+  let v = LOCALES[lang];
+  for (const p of parts) {
+    if (v && typeof v === 'object' && p in v) v = v[p];
+    else { v = undefined; break; }
+  }
+  if (typeof v !== 'string') return '';
+  if (params) {
+    for (const k of Object.keys(params)) {
+      v = v.replace(new RegExp('\\{' + k + '\\}', 'g'), String(params[k]));
+    }
+  }
+  return v;
+}
+// Format a number in the language's preferred digits (Arabic pages get Arabic-Indic digits)
+function fmtNum(lang, n) {
+  if (lang === 'ar') return toArabicDigits(n);
+  return String(n);
+}
+// Localized category name (maps Arabic category → English equivalent on /en pages)
+function localizeTag(lang, tag) {
+  if (!tag) return '';
+  if (lang === 'ar') return tag;
+  return t('en', 'categories.' + tag) || tag;
+}
+// Localized level label
+function localizeLevel(lang, level) {
+  if (!level) return '';
+  if (lang === 'ar') return level;
+  return t('en', 'levels.' + level) || level;
+}
+// Localized date (e.g. "January 5, 2025" for EN, "٥ يناير ٢٠٢٥" for AR)
+function localizeDate(lang, date) {
+  const d = new Date(date);
+  if (lang === 'en') {
+    return d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+  }
+  return d.toLocaleDateString('ar-EG', { year: 'numeric', month: 'long', day: 'numeric' });
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 function readingTime(html) {
   const words = html.replace(/<[^>]+>/g, '').split(/\s+/).filter(Boolean).length;
@@ -74,29 +121,57 @@ const ICONS = {
   play:   '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="5 3 19 12 5 21 5 3"/></svg>',
 };
 
-// ── HTML shell ────────────────────────────────────────────────────────────────
-function shell({ title, metaDesc, body, depth = 0, head = '', canonical = '', ogImage = '', jsonLd = '' }) {
-  const cssHref = depth === 0 ? 'css/style.css' : '../css/style.css';
-  const homeHref = depth === 0 ? '/' : '../';
-  const rootPath = depth === 0 ? '' : '../';
-  const YEAR = toArabicDigits(new Date().getFullYear());
+// ── Language switcher icon (globe) ────────────────────────────────────────────
+const ICON_GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
 
-  // Font preloads — only the two heaviest weights (Tajawal 400 Arabic + Amiri 400 Arabic)
-  const fontPreloads = `
-  <link rel="preload" href="/fonts/tajawal-400-ar.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/fonts/amiri-400-ar.woff2" as="font" type="font/woff2" crossorigin>`;
+// ── HTML shell ────────────────────────────────────────────────────────────────
+// lang: 'ar' | 'en' — drives <html lang/dir>, fonts, UI strings, header, footer, search
+// depth: 0 = root, 1 = subdirectory, 2 = /en/articles/ (two levels deep)
+// langSwitchHref: where the language switcher button links to
+// alternateHref: canonical URL of the opposite-language equivalent (for hreflang)
+// rssHref: RSS feed URL for this language
+function shell({ title, metaDesc, body, depth = 0, head = '', canonical = '', ogImage = '', jsonLd = '', lang = 'ar', langSwitchHref = '', alternateHref = '', rssHref = '' }) {
+  const cssHref = depth === 0 ? 'css/style.css' : (depth === 1 ? '../css/style.css' : '../../css/style.css');
+  const homeHref = depth === 0 ? '/' : (depth === 1 ? '../' : '../../');
+  const rootPath = depth === 0 ? '' : (depth === 1 ? '../' : '../../');
+  const locale = LOCALES[lang];
+  const YEAR = fmtNum(lang, new Date().getFullYear());
+
+  // Font preloads — different per language (Arabic: Tajawal+Amiri; English: Inter+Source Serif 4)
+  const fontPreloads = lang === 'ar'
+    ? `<link rel="preload" href="/fonts/tajawal-400-ar.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/amiri-400-ar.woff2" as="font" type="font/woff2" crossorigin>`
+    : `<link rel="preload" href="/fonts/inter-la.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/fonts/source-serif-4-la.woff2" as="font" type="font/woff2" crossorigin>`;
 
   const canonicalTag = canonical ? `<link rel="canonical" href="${canonical}">` : '';
+  // hreflang alternate tags (bidirectional: ar ↔ en)
+  // x-default always points to the Arabic (primary language) URL
+  const hreflangTags = (alternateHref && canonical)
+    ? `<link rel="alternate" hreflang="${lang === 'ar' ? 'ar' : 'en'}" href="${canonical}">
+  <link rel="alternate" hreflang="${lang === 'ar' ? 'en' : 'ar'}" href="${alternateHref}">
+  <link rel="alternate" hreflang="x-default" href="${lang === 'ar' ? canonical : alternateHref}">`
+    : '';
   const ogImageTag = ogImage ? `<meta property="og:image" content="${ogImage}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:image" content="${ogImage}">` : '';
   const jsonLdTag = jsonLd ? `<script type="application/ld+json">${jsonLd}</script>` : '';
-  // Vercel Analytics (Web Analytics) — only loads in production.
-  // Honours DNT, free, no consent banner needed.
   const analyticsScript = process.env.VERCEL_ANALYTICS_ID
     ? `<script defer src="/_vercel/insights/script.js" data-ve-analytics-id="${process.env.VERCEL_ANALYTICS_ID}"></script>`
     : `<script defer src="/_vercel/insights/script.js"></script>`;
 
+  // Language switcher — links to opposite-language equivalent
+  const langSwitchHtml = langSwitchHref
+    ? `<a class="lang-switch" href="${langSwitchHref}" aria-label="${escAttr(t(lang, 'nav.langSwitchAria'))}"><span class="lang-globe" aria-hidden="true">${ICON_GLOBE}</span><span class="lang-text-long">${t(lang, 'nav.langSwitchTo')}</span><span class="lang-text-short">${t(lang, 'nav.langSwitchTo').slice(0, 2)}</span></a>`
+    : '';
+
+  // RSS feed link
+  const rssLink = rssHref || (lang === 'ar' ? `${SITE_URL}/feed.xml` : `${SITE_URL}/en/rss.xml`);
+
+  // Favicon — Arabic "ك" or English "K" depending on language
+  const faviconChar = lang === 'ar' ? 'ك' : 'K';
+  const faviconFont = lang === 'ar' ? 'serif' : 'serif';
+
   return `<!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="${locale.html.lang}" dir="${locale.html.dir}">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -105,59 +180,122 @@ function shell({ title, metaDesc, body, depth = 0, head = '', canonical = '', og
 <meta property="og:title" content="${escAttr(title)}">
 <meta property="og:description" content="${escAttr(metaDesc)}">
 <meta property="og:type" content="website">
-<meta property="og:locale" content="ar_EG">
+<meta property="og:locale" content="${locale.html.locale}">
 <meta name="theme-color" content="#FAF9F6" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#1B1A17" media="(prefers-color-scheme: dark)">
 ${ogImageTag}
 ${canonicalTag}
+${hreflangTags}
 ${fontPreloads}
 <link rel="stylesheet" href="${cssHref}">
-<link rel="alternate" type="application/rss+xml" title="كلام له لازمه" href="${SITE_URL}/feed.xml">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23166956'/><text x='50' y='72' font-size='62' text-anchor='middle' fill='white' font-family='serif'>ك</text></svg>">
+<link rel="alternate" type="application/rss+xml" title="${escAttr(t(lang, 'site.name'))}" href="${rssLink}">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23166956'/><text x='50' y='72' font-size='62' text-anchor='middle' fill='white' font-family='${faviconFont}'>${faviconChar}</text></svg>">
 ${jsonLdTag}
 ${head}
 </head>
 <body>
-<a class="skip-link" href="#main">تخطَّ إلى المحتوى</a>
+<a class="skip-link" href="#main">${t(lang, 'nav.skipToContent')}</a>
 <div id="progress" aria-hidden="true"></div>
 <header class="site-header">
   <div class="wrap">
-    <a class="brand" href="${homeHref}" aria-label="كلام له لازمه — الرئيسية">
-      <span class="brand-mark" aria-hidden="true">ك</span>
+    <a class="brand" href="${homeHref}" aria-label="${escAttr(t(lang, 'nav.brandAria'))}">
+      <span class="brand-mark" aria-hidden="true">${lang === 'ar' ? 'ك' : 'K'}</span>
       <span>
-        <span class="brand-name">كلام له لازمه</span>
-        <span class="brand-sub">مقالات في الوعي والقيم</span>
+        <span class="brand-name">${t(lang, 'site.name')}</span>
+        <span class="brand-sub">${t(lang, 'site.tagline')}</span>
       </span>
     </a>
     <div class="header-utils">
-      <button class="icon-btn" id="search-btn" aria-label="بحث" type="button">${ICONS.search}</button>
-      <button class="icon-btn" id="theme-btn" aria-label="تبديل الوضع الليلي" type="button">${ICONS.sun}${ICONS.moon}</button>
-      <a class="header-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">موقعي الشخصي <span aria-hidden="true">↗</span></a>
+      <button class="icon-btn" id="search-btn" aria-label="${escAttr(t(lang, 'nav.search'))}" type="button">${ICONS.search}</button>
+      <button class="icon-btn" id="theme-btn" aria-label="${escAttr(t(lang, 'nav.themeToggle'))}" type="button">${ICONS.sun}${ICONS.moon}</button>
+      ${langSwitchHtml}
+      <a class="header-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">${t(lang, 'nav.personalSite')} <span aria-hidden="true">↗</span></a>
     </div>
   </div>
 </header>
 <main id="main">${body}</main>
 <footer class="site-footer">
   <div class="wrap">
-    <span class="f-brand">كلام له لازمه<span style="color:var(--gold)">.</span></span>
-    <span class="f-note">جميع الحقوق محفوظة © ${YEAR} — بقلم <a href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">زياد عمرو</a></span>
+    <span class="f-brand">${t(lang, 'site.name')}<span style="color:var(--gold)">${t(lang, 'footer.dot')}</span></span>
+    <span class="f-note">${t(lang, 'footer.rights', { year: YEAR })} <a href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">${t(lang, 'footer.authorName')}</a></span>
   </div>
 </footer>
 
 <!-- Search modal -->
-<div class="search-overlay" id="search-overlay" role="dialog" aria-modal="true" aria-label="بحث في الموقع">
+<div class="search-overlay" id="search-overlay" role="dialog" aria-modal="true" aria-label="${escAttr(t(lang, 'nav.searchDialogLabel'))}">
   <div class="search-box">
     <div class="search-input-wrap">
       ${ICONS.search}
-      <input class="search-input" id="search-input" type="search" placeholder="ابحث في المقالات…" autocomplete="off">
-      <button class="search-close" id="search-close" aria-label="إغلاق">×</button>
+      <input class="search-input" id="search-input" type="search" placeholder="${escAttr(t(lang, 'search.placeholder'))}" autocomplete="off">
+      <button class="search-close" id="search-close" aria-label="${escAttr(t(lang, 'search.close'))}">×</button>
     </div>
     <div class="search-results" id="search-results"></div>
-    <div class="search-hint">اكتب كلمة أو اكتر — النتائج بتظهر وأنت بتكتب</div>
+    <div class="search-hint">${t(lang, 'search.hint')}</div>
   </div>
 </div>
 
-<script>window.SITE_BASE='${rootPath}';</script>
+<script>window.SITE_BASE='${rootPath}';window.SITE_LANG='${lang}';window.SITE_I18N=${JSON.stringify({
+  ar: {
+    searchLoading: t('ar', 'search.loading'),
+    searchNoResults: t('ar', 'search.noResults'),
+    like: t('ar', 'engagement.like'),
+    liked: t('ar', 'engagement.liked'),
+    thanksForLike: t('ar', 'engagement.thanksForLike'),
+    alreadyLiked: t('ar', 'engagement.alreadyLiked'),
+    rateLimited: t('ar', 'engagement.rateLimited'),
+    likeError: t('ar', 'engagement.likeError'),
+    noLikes: t('ar', 'engagement.noLikes'),
+    likesCount: t('ar', 'engagement.likesCount').replace('{n}', '').trim(),
+    publishing: t('ar', 'engagement.publishing'),
+    publishComment: t('ar', 'engagement.publishComment'),
+    commentError: t('ar', 'engagement.commentError'),
+    noComments: t('ar', 'engagement.noComments'),
+    guest: t('ar', 'engagement.guest'),
+    now: t('ar', 'engagement.now'),
+    minutesAgo: t('ar', 'engagement.minutesAgo'),
+    hoursAgo: t('ar', 'engagement.hoursAgo'),
+    daysAgo: t('ar', 'engagement.daysAgo'),
+    bookmark: t('ar', 'article.bookmark'),
+    bookmarked: t('ar', 'article.bookmarked'),
+    clearAll: t('ar', 'home.clearAll'),
+    clearAllConfirm: t('ar', 'home.clearAllConfirm'),
+    copyTextDone: t('ar', 'article.copyTextDone'),
+    answerCorrect: t('ar', 'article.answerCorrect'),
+    answerWrong: t('ar', 'article.answerWrong'),
+    saved: t('ar', 'card.saved'),
+    readArticle: t('ar', 'card.readArticle'),
+  },
+  en: {
+    searchLoading: t('en', 'search.loading'),
+    searchNoResults: t('en', 'search.noResults'),
+    like: t('en', 'engagement.like'),
+    liked: t('en', 'engagement.liked'),
+    thanksForLike: t('en', 'engagement.thanksForLike'),
+    alreadyLiked: t('en', 'engagement.alreadyLiked'),
+    rateLimited: t('en', 'engagement.rateLimited'),
+    likeError: t('en', 'engagement.likeError'),
+    noLikes: t('en', 'engagement.noLikes'),
+    likesCount: t('en', 'engagement.likesCount').replace('{n}', '').trim(),
+    publishing: t('en', 'engagement.publishing'),
+    publishComment: t('en', 'engagement.publishComment'),
+    commentError: t('en', 'engagement.commentError'),
+    noComments: t('en', 'engagement.noComments'),
+    guest: t('en', 'engagement.guest'),
+    now: t('en', 'engagement.now'),
+    minutesAgo: t('en', 'engagement.minutesAgo'),
+    hoursAgo: t('en', 'engagement.hoursAgo'),
+    daysAgo: t('en', 'engagement.daysAgo'),
+    bookmark: t('en', 'article.bookmark'),
+    bookmarked: t('en', 'article.bookmarked'),
+    clearAll: t('en', 'home.clearAll'),
+    clearAllConfirm: t('en', 'home.clearAllConfirm'),
+    copyTextDone: t('en', 'article.copyTextDone'),
+    answerCorrect: t('en', 'article.answerCorrect'),
+    answerWrong: t('en', 'article.answerWrong'),
+    saved: t('en', 'card.saved'),
+    readArticle: t('en', 'card.readArticle'),
+  },
+})};</script>
 <script src="${rootPath}js/app.js" defer></script>
 <script>
 (function(){var b=document.getElementById("progress");window.addEventListener("scroll",function(){var h=document.documentElement,m=h.scrollHeight-h.clientHeight;b.style.width=(m>0?(h.scrollTop/m)*100:0)+"%";},{passive:true});})();
@@ -171,173 +309,222 @@ ${analyticsScript}
 // NOTE: HTML forbids nesting <a> inside <a> — browsers auto-close the outer
 // <a> when they hit the inner one, breaking the card layout. So the inner
 // category link is rendered as a <span> with role=link + JS navigation.
-function card(a, depth = 0) {
-  const href = depth === 0 ? `articles/${a.slug}` : a.slug;
-  const catHref = depth === 0 ? `category/${a.categorySlug}` : `../category/${a.categorySlug}`;
-  return `<a class="card" href="${href}" data-slug="${escAttr(a.slug)}">
+// lang: 'ar' | 'en' — drives article link path + UI strings
+// depth: 0 = root, 1 = subdirectory, 2 = /en/articles/ (two levels deep)
+function card(a, depth = 0, lang = 'ar') {
+  const articleBase = lang === 'en' ? 'articles/' : 'articles/';
+  const catBase = lang === 'en' ? 'category/' : 'category/';
+  const href = depth === 0
+    ? `${articleBase}${a.slug}`
+    : (depth === 1 ? `${articleBase}${a.slug}` : `${articleBase}${a.slug}`);
+  // For depth=0 (root): articles/{slug}  +  category/{catSlug}
+  // For depth=1 (article dir, same level as sibling articles): {slug}  +  ../category/{catSlug}
+  // For depth=2 (/en/articles/): {slug}  +  ../category/{catSlug}
+  const cardHref = depth === 0 ? `${articleBase}${a.slug}` : a.slug;
+  const catHref = depth === 0
+    ? `${catBase}${a.categorySlug}`
+    : (depth === 1 ? `../${catBase}${a.categorySlug}` : `../${catBase}${a.categorySlug}`);
+
+  const tagDisplay = localizeTag(lang, a.tag);
+  const minutesLabel = t(lang, 'card.minutesShort', { n: fmtNum(lang, a.readingTime) });
+  const readLabel = t(lang, 'card.read');
+  const readArrow = t(lang, 'card.readArrow');
+
+  return `<a class="card" href="${cardHref}" data-slug="${escAttr(a.slug)}">
   <div class="card-top">
     <span class="card-icon" aria-hidden="true">${a.icon}</span>
-    <div class="card-tags">${levelBadge(a.level)}<span class="card-tag" role="link" tabindex="0" data-href="${escAttr(catHref)}" onclick="event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')" onkeypress="if(event.key==='Enter'){event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')}">${a.tag}</span></div>
+    <div class="card-tags">${levelBadge(a.level, lang)}<span class="card-tag" role="link" tabindex="0" data-href="${escAttr(catHref)}" onclick="event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')" onkeypress="if(event.key==='Enter'){event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')}">${escAttr(tagDisplay)}</span></div>
   </div>
-  <h3>${a.title}</h3>
-  <p>${a.excerpt}</p>
+  <h3>${lang === 'en' && a.titleEn ? a.titleEn : a.title}</h3>
+  <p>${lang === 'en' && a.excerptEn ? a.excerptEn : a.excerpt}</p>
   <div class="card-meta">
-    <span class="time">${toArabicDigits(a.readingTime)} دقايق</span>
+    <span class="time">${minutesLabel}</span>
     <span class="card-stats" data-slug="${escAttr(a.slug)}" aria-hidden="true">
       <span class="stat-item stat-likes"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9C1 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6 4 4.5 8C19 16.5 12 21 12 21z"/></svg><span class="stat-likes-num">·</span></span>
       <span class="stat-sep">·</span>
       <span class="stat-item stat-comments"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg><span class="stat-comments-num">·</span></span>
     </span>
-    <span class="read">اقرأ <span class="arr" aria-hidden="true">←</span></span>
+    <span class="read">${readLabel} <span class="arr" aria-hidden="true">${readArrow}</span></span>
   </div>
 </a>`;
 }
 
 // ── Index page ────────────────────────────────────────────────────────────────
-function buildIndex(articles) {
-  const cards = articles.map(a => card(a, 0)).join('\n');
+function buildIndex(articles, lang = 'ar') {
+  // For EN, only show translated articles. For AR, show all.
+  const shown = lang === 'en' ? articles.filter(a => a.translated) : articles;
+  const cards = shown.map(a => card(a, 0, lang)).join('\n');
+  const heroQuote = t(lang, 'home.heroQuote');
+  const heroTitle = t(lang, 'home.heroTitle');
+  const heroTag = t(lang, 'home.heroTag');
+  const startHere = t(lang, 'home.startHere');
+  const startHereArrow = t(lang, 'home.startHereArrow');
+  const startHref = lang === 'en' ? 'start' : 'start';
+  const articlesCount = t(lang, 'home.articlesCount', { n: fmtNum(lang, shown.length) });
   const body = `
   <div class="hero">
-    <span class="hero-quote" aria-hidden="true">”</span>
-    <h1>كلام له لازمه<span class="dot">.</span></h1>
-    <p class="tag">مش كل كلام يتقال… لكن فيه كلام لازم يتقال. مقالات هادية في الوعي والقيم والأخلاق، مكتوبة بلغة قريبة من القلب.</p>
+    <span class="hero-quote" aria-hidden="true">${heroQuote}</span>
+    <h1>${heroTitle}</h1>
+    <p class="tag">${heroTag}</p>
     <div class="orn-line" aria-hidden="true">✦</div>
-    <a class="hero-start" href="start">ابدأ من هنا ←</a>
+    <a class="hero-start" href="${startHref}">${startHere} ${startHereArrow}</a>
   </div>
   <div class="wrap">
-    <section class="bookmarks-section" id="bookmarks-section" hidden aria-label="محفوظاتك">
+    <section class="bookmarks-section" id="bookmarks-section" hidden aria-label="${escAttr(t(lang, 'home.yourBookmarks'))}">
       <div class="section-head">
-        <h2>محفوظاتك</h2>
-        <button class="bm-clear" id="bm-clear" type="button" aria-label="مسح كل المحفوظات">مسح الكل</button>
+        <h2>${t(lang, 'home.yourBookmarks')}</h2>
+        <button class="bm-clear" id="bm-clear" type="button" aria-label="${escAttr(t(lang, 'home.clearAll'))}">${t(lang, 'home.clearAll')}</button>
       </div>
       <div class="grid bookmarks-grid" id="bookmarks-grid"></div>
     </section>
     <div class="section-head">
-      <h2>المقالات</h2>
-      <span class="count">${toArabicDigits(articles.length)} مقالات</span>
+      <h2>${t(lang, 'home.articles')}</h2>
+      <span class="count">${articlesCount}</span>
     </div>
     <div class="grid">
 ${cards}
     </div>
   </div>`;
   return shell({
-    title: 'كلام له لازمه — مقالات في الوعي والقيم',
-    metaDesc: 'مقالات هادية في الوعي والقيم والأخلاق بقلم زياد عمرو.',
+    title: t(lang, 'home.title'),
+    metaDesc: t(lang, 'home.metaDesc'),
     body,
-    depth: 0,
-    canonical: `${SITE_URL}/`,
+    depth: lang === 'en' ? 1 : 0,
+    lang,
+    canonical: lang === 'en' ? `${SITE_URL}/en/` : `${SITE_URL}/`,
+    alternateHref: lang === 'en' ? `${SITE_URL}/` : `${SITE_URL}/en/`,
+    langSwitchHref: lang === 'en' ? '/' : '/en/',
     ogImage: `${SITE_URL}/og-default.svg`,
   });
 }
 
 // ── /start page ──────────────────────────────────────────────────────────────
-function buildStart(articles) {
-  // Pick the most recent article for "ابدأ الآن" if user has no specific entry
-  const featured = articles[0];
-  const featuredHref = featured ? `articles/${featured.slug}` : '';
+function buildStart(articles, lang = 'ar') {
+  // For EN, only consider translated articles for the "featured" pick
+  const candidates = lang === 'en' ? articles.filter(a => a.translated) : articles;
+  const featured = candidates[0];
+  const featuredHref = featured ? (lang === 'en' ? `articles/${featured.slug}` : `articles/${featured.slug}`) : '';
+  const heroQuote = t(lang, 'home.heroQuote');
+  const featuredTitle = lang === 'en' && featured ? featured.titleEn : (featured ? featured.title : '');
+  const nums = lang === 'ar' ? ['١', '٢', '٣', '٤'] : ['1', '2', '3', '4'];
   const body = `
   <div class="start-hero">
-    <span class="hero-quote" aria-hidden="true">”</span>
-    <h1>ابدأ من هنا</h1>
-    <p class="tag">لو إنت جديد في «كلام له لازمه»، الصفحة دي بتدلّك على إزاي تستفيد من الموقع وتلاقي اللي يخصّك بسرعة.</p>
+    <span class="hero-quote" aria-hidden="true">${heroQuote}</span>
+    <h1>${t(lang, 'start.title')}</h1>
+    <p class="tag">${t(lang, 'start.tag')}</p>
     <div class="orn-line" aria-hidden="true">✦</div>
   </div>
   <div class="wrap start-wrap">
     <section class="start-section">
-      <span class="start-num" aria-hidden="true">١</span>
+      <span class="start-num" aria-hidden="true">${nums[0]}</span>
       <div>
-        <h2>إيه اللي هتلاقيه هنا؟</h2>
-        <p>مقالات عربية هادفة في ثلاثة محاور رئيسية: <strong>الوعي الرقمي</strong> (تعاملنا السليم مع السوشيال ميديا والترندات)، و<strong>القيم والمجتمع</strong> (رؤية الإسلام للعلاقات الإنسانية والكرامة)، و<strong>الأخلاق والتزكية</strong> (بناء النفس وترويضها على الفضائل). كل مقال مكتوب بلغة قريبة من القلب، وفيه آيات وأحاديث وشواهد من الواقع.</p>
+        <h2>${t(lang, 'start.h1_1')}</h2>
+        <p>${t(lang, 'start.p1_1')}</p>
       </div>
     </section>
     <section class="start-section">
-      <span class="start-num" aria-hidden="true">٢</span>
+      <span class="start-num" aria-hidden="true">${nums[1]}</span>
       <div>
-        <h2>مميزات بتساعدك تقرأ</h2>
-        <p>كل مقال فيه <strong>زرار تشكيل</strong> لو النسخة المشكولة متوفرة — لما تحتاج تقرأ بالنص الأصلي بالحركات. وفي نهاية كل مقال <strong>تدريبات تفاعلية</strong>: أسئلة اختيار من متعدد بتصحيح فوري، وتدريبات إعراب بزرار «اعرض الإجابة النموذجية». كمان فيه <strong>وضع المعلم</strong> للطباعة بدون إجابات، و<strong>أزرار حجم الخط</strong> تظبط القراءة على راحتك، و<strong>حفظ للقراءة لاحقًا</strong> يخزّن المقالات في الـ localStorage.</p>
+        <h2>${t(lang, 'start.h1_2')}</h2>
+        <p>${t(lang, 'start.p1_2')}</p>
       </div>
     </section>
     <section class="start-section">
-      <span class="start-num" aria-hidden="true">٣</span>
+      <span class="start-num" aria-hidden="true">${nums[2]}</span>
       <div>
-        <h2>إزاي تختار اللي يناسبك؟</h2>
-        <p>كل مقال عليه <strong>badge للمستوى</strong> (مبتدئ / متوسط / متقدم). لو إنت جديد، ابدأ بمقالات «مبتدئ» وادّي صعودًا. تقدر كمان تدخل على أي <strong>تصنيف</strong> من فوق أو من بطاقة المقال، وتشوف كل مقالاته في صفحة واحدة. والمقالات اللي بتنتسب لـ<strong>سلسلة</strong> مترابطة هتلاقيها بـ«الدرس السابق / التالي» ومسار تقدر تتبعه.</p>
+        <h2>${t(lang, 'start.h1_3')}</h2>
+        <p>${t(lang, 'start.p1_3')}</p>
       </div>
     </section>
     <section class="start-section">
-      <span class="start-num" aria-hidden="true">٤</span>
+      <span class="start-num" aria-hidden="true">${nums[3]}</span>
       <div>
-        <h2>مفتاح الاختصارات</h2>
-        <p>في أي صفحة، اضغط <kbd>/</kbd> أو <kbd>Ctrl</kbd>+<kbd>K</kbd> تفتح صندوق البحث. اضغط <kbd>Esc</kbd> تقفله. وفي صفحة المقال، الزرار اللي فوق المحتوى بيديك تحكم كامل في التجربة.</p>
+        <h2>${t(lang, 'start.h1_4')}</h2>
+        <p>${t(lang, 'start.p1_4')}</p>
       </div>
     </section>
     <div class="orn" aria-hidden="true">✦</div>
-    ${featured ? `<a class="start-cta" href="${featuredHref}">ابدأ بأحدث مقال: «${escapeHtml(featured.title)}» ←</a>` : ''}
-    <p style="text-align:center;color:var(--muted);font-size:15px;margin-top:32px">أو <a href="/" style="color:var(--accent);font-weight:800">تصفّح كل المقالات</a> مباشرة.</p>
+    ${featured ? `<a class="start-cta" href="${featuredHref}">${t(lang, 'start.featuredCta', { title: escapeHtml(featuredTitle) })}</a>` : ''}
+    <p style="text-align:center;color:var(--muted);font-size:15px;margin-top:32px">${t(lang, 'start.browseAll')}</p>
   </div>`;
   return shell({
-    title: 'ابدأ من هنا — كلام له لازمه',
-    metaDesc: 'دليل البدء لموقع «كلام له لازمه»: إيه اللي هتلاقيه، مميزات القراءة، وإزاي تختار اللي يناسبك.',
+    title: t(lang, 'start.htmlTitle'),
+    metaDesc: t(lang, 'start.metaDesc'),
     body,
-    depth: 0,
-    canonical: `${SITE_URL}/start`,
+    depth: lang === 'en' ? 1 : 0,
+    lang,
+    canonical: lang === 'en' ? `${SITE_URL}/en/start` : `${SITE_URL}/start`,
+    alternateHref: lang === 'en' ? `${SITE_URL}/start` : `${SITE_URL}/en/start`,
+    langSwitchHref: lang === 'en' ? '/start' : '/en/start',
     ogImage: `${SITE_URL}/og-default.svg`,
   });
 }
 
 // ── Level badge helper ───────────────────────────────────────────────────────
 const LEVEL_META = {
-  'مبتدئ':  { cls: 'lvl-beg',  label: 'مبتدئ',  icon: '🟢' },
-  'متوسط':  { cls: 'lvl-mid',  label: 'متوسط',  icon: '🟡' },
-  'متقدم':  { cls: 'lvl-adv',  label: 'متقدم',  icon: '🔴' },
+  'مبتدئ':  { cls: 'lvl-beg',  label: 'مبتدئ',  labelEn: 'Beginner',    icon: '🟢' },
+  'متوسط':  { cls: 'lvl-mid',  label: 'متوسط',  labelEn: 'Intermediate', icon: '🟡' },
+  'متقدم':  { cls: 'lvl-adv',  label: 'متقدم',  labelEn: 'Advanced',    icon: '🔴' },
 };
-function levelBadge(level) {
+function levelBadge(level, lang = 'ar') {
   if (!level) return '';
   const m = LEVEL_META[level];
   if (!m) return '';
-  return `<span class="level-badge ${m.cls}" aria-label="المستوى: ${m.label}">${m.label}</span>`;
+  const label = lang === 'en' ? m.labelEn : m.label;
+  return `<span class="level-badge ${m.cls}" aria-label="${lang === 'en' ? 'Level' : 'المستوى'}: ${label}">${label}</span>`;
 }
 
 // ── Article page ──────────────────────────────────────────────────────────────
-function buildArticle(a, allArticles) {
-  // Reading-time should NOT count exercises — only main article body.
-  // a.readingTime was computed against a.mainHtml (see main()).
-  const idx = allArticles.findIndex(x => x.slug === a.slug);
-  const prev = idx > 0 ? allArticles[idx - 1] : null;
-  const next = idx < allArticles.length - 1 ? allArticles[idx + 1] : null;
-  const others = allArticles.filter(x => x.slug !== a.slug).slice(0, 2);
-  const otherCards = others.map(x => card(x, 1)).join('\n');
+// lang: 'ar' | 'en' — drives UI strings, fonts, paths, JSON-LD inLanguage
+// For EN: uses a.titleEn, a.excerptEn, a.englishHtml; hides tashkeel + exercises
+function buildArticle(a, allArticles, lang = 'ar') {
+  const isEn = lang === 'en';
+  const title = isEn ? (a.titleEn || a.title) : a.title;
+  const excerpt = isEn ? (a.excerptEn || a.excerpt) : a.excerpt;
+  const bodyHtml = isEn ? (a.englishHtml || a.mainHtml) : a.mainHtml;
+  const plainText = isEn ? (a.englishPlainText || a.plainText) : a.plainText;
+  const articleDepth = isEn ? 2 : 1; // /en/articles/ is one level deeper
+  const articleUrlBase = isEn ? `${SITE_URL}/en/articles/${a.slug}` : `${SITE_URL}/articles/${a.slug}`;
+  const alternateUrl = isEn ? `${SITE_URL}/articles/${a.slug}` : `${SITE_URL}/en/articles/${a.slug}`;
+  // Relative paths within article page
+  const backHref = isEn ? '../' : '../'; // both go up one level to home (/en/ or /)
+  const categoryHref = isEn ? `../category/${a.categorySlug}` : `../category/${a.categorySlug}`;
+  const articleRelBase = ''; // sibling articles are at ./{slug}
 
-  // TOC if 4+ h2s (in main body only)
-  const h2Matches = [...a.mainHtml.matchAll(/<h2>([^<]+)<\/h2>/g)];
+  // For EN, only consider translated articles for prev/next + others
+  const candidateArticles = isEn ? allArticles.filter(x => x.translated) : allArticles;
+  const idx = candidateArticles.findIndex(x => x.slug === a.slug);
+  const prev = idx > 0 ? candidateArticles[idx - 1] : null;
+  const next = idx < candidateArticles.length - 1 ? candidateArticles[idx + 1] : null;
+  const others = candidateArticles.filter(x => x.slug !== a.slug).slice(0, 2);
+  const otherCards = others.map(x => card(x, isEn ? 2 : 1, lang)).join('\n');
+
+  // TOC if 4+ h2s (in body only)
+  const h2Matches = [...bodyHtml.matchAll(/<h2>([^<]+)<\/h2>/g)];
   let tocHtml = '';
   if (h2Matches.length >= 4) {
     const items = h2Matches.map((m, i) => {
       const id = `s${i + 1}`;
       return `<li><a href="#${id}">${m[1]}</a></li>`;
     }).join('');
-    tocHtml = `<nav class="toc" aria-label="جدول المحتويات">
-      <div class="toc-title">${ICONS.list}<span>المحتويات</span></div>
+    tocHtml = `<nav class="toc" aria-label="${escAttr(t(lang, 'article.contents'))}">
+      <div class="toc-title">${ICONS.list}<span>${t(lang, 'article.contents')}</span></div>
       <ul class="toc-list">${items}</ul>
     </nav>`;
     let i = 0;
-    a.mainHtml = a.mainHtml.replace(/<h2>([^<]+)<\/h2>/g, (match, txt) => {
+    a._tocInjectedBody = bodyHtml.replace(/<h2>([^<]+)<\/h2>/g, (match, txt) => {
       i++;
       return `<h2 id="s${i}">${txt}</h2>`;
     });
-    if (a.voweledHtml) {
-      let j = 0;
-      a.voweledHtml = a.voweledHtml.replace(/<h2>([^<]+)<\/h2>/g, (match, txt) => {
-        j++;
-        return `<h2 id="vs${j}">${txt}</h2>`;
-      });
-    }
+  } else {
+    a._tocInjectedBody = bodyHtml;
   }
+  const renderedBody = a._tocInjectedBody;
 
-  // Series navigation (if article belongs to a series)
+  // Series navigation (if article belongs to a series) — only on AR (series are Arabic-only currently)
   let seriesNavHtml = '';
-  if (a.series && a.seriesOrder) {
-    const siblings = allArticles
+  if (a.series && a.seriesOrder && !isEn) {
+    const siblings = candidateArticles
       .filter(x => x.series === a.series && x.seriesOrder)
       .sort((x, y) => x.seriesOrder - y.seriesOrder);
     const sIdx = siblings.findIndex(x => x.slug === a.slug);
@@ -345,12 +532,12 @@ function buildArticle(a, allArticles) {
       const sPrev = sIdx > 0 ? siblings[sIdx - 1] : null;
       const sNext = sIdx < siblings.length - 1 ? siblings[sIdx + 1] : null;
       const total = siblings.length;
-      const sPrevHtml = sPrev ? `<a class="sn-link" href="${sPrev.slug}"><span class="sn-arrow" aria-hidden="true">→</span><span class="sn-meta">الدرس السابق</span><span class="sn-title">${sPrev.title}</span></a>` : '<span class="sn-spacer"></span>';
-      const sNextHtml = sNext ? `<a class="sn-link sn-next" href="${sNext.slug}"><span class="sn-meta">الدرس التالي</span><span class="sn-title">${sNext.title}</span><span class="sn-arrow" aria-hidden="true">←</span></a>` : '<span class="sn-spacer"></span>';
-      seriesNavHtml = `<nav class="series-nav" aria-label="مسار السلسلة">
+      const sPrevHtml = sPrev ? `<a class="sn-link sn-prev" href="${sPrev.slug}"><span class="sn-arrow" aria-hidden="true">${t(lang, 'article.prevArrow')}</span><span class="sn-meta">${t(lang, 'article.prevLesson')}</span><span class="sn-title">${sPrev.title}</span></a>` : '<span class="sn-spacer"></span>';
+      const sNextHtml = sNext ? `<a class="sn-link sn-next" href="${sNext.slug}"><span class="sn-meta">${t(lang, 'article.nextLesson')}</span><span class="sn-title">${sNext.title}</span><span class="sn-arrow" aria-hidden="true">${t(lang, 'article.nextArrow')}</span></a>` : '<span class="sn-spacer"></span>';
+      seriesNavHtml = `<nav class="series-nav" aria-label="${escAttr(t(lang, 'article.seriesAria'))}">
         <div class="sn-header">
-          <span class="sn-name">📚 السلسلة: ${escapeHtml(a.series)}</span>
-          <span class="sn-progress">الدرس ${toArabicDigits(a.seriesOrder)} من ${toArabicDigits(total)}</span>
+          <span class="sn-name">${t(lang, 'article.series')}: ${escapeHtml(a.series)}</span>
+          <span class="sn-progress">${t(lang, 'article.seriesLesson', { n: fmtNum(lang, a.seriesOrder), total: fmtNum(lang, total) })}</span>
         </div>
         <div class="sn-progress-bar"><div class="sn-progress-fill" style="width:${(a.seriesOrder / total) * 100}%"></div></div>
         <div class="sn-links">${sPrevHtml}${sNextHtml}</div>
@@ -358,84 +545,89 @@ function buildArticle(a, allArticles) {
     }
   }
 
-  // Reading controls bar (font size, bookmark, tashkeel, teacher, copy text)
-  const readingControls = `<div class="reading-controls" role="toolbar" aria-label="أدوات القراءة">
-    ${a.voweledHtml ? `<button class="rc-btn" id="tashkeel-btn" type="button" aria-pressed="false" title="التشكيل">${ICONS.tashkeel}<span>التشكيل</span></button>` : ''}
-    <div class="rc-font" role="group" aria-label="حجم الخط">
-      <button class="rc-btn rc-font-btn" id="font-dec" type="button" aria-label="تصغير الخط" title="تصغير الخط">أ−</button>
-      <button class="rc-btn rc-font-btn" id="font-inc" type="button" aria-label="تكبير الخط" title="تكبير الخط">أ+</button>
+  // Reading controls bar — Arabic-only features (tashkeel, teacher mode, exercises)
+  // For EN: only font-size + bookmark + copy-text (no tashkeel, no teacher)
+  const tashkeelBtn = (a.voweledHtml && !isEn) ? `<button class="rc-btn" id="tashkeel-btn" type="button" aria-pressed="false" title="${escAttr(t(lang, 'article.tashkeel'))}">${ICONS.tashkeel}<span>${t(lang, 'article.tashkeel')}</span></button>` : '';
+  const teacherBtn = !isEn ? `<button class="rc-btn" id="teacher-btn" type="button" title="${escAttr(t(lang, 'article.teacherMode'))}">${ICONS.teacher}<span class="rc-label">${t(lang, 'article.teacherMode')}</span></button>` : '';
+  const readingControls = `<div class="reading-controls" role="toolbar" aria-label="${escAttr(t(lang, 'article.readingControls'))}">
+    ${tashkeelBtn}
+    <div class="rc-font" role="group" aria-label="${escAttr(t(lang, 'article.fontSize'))}">
+      <button class="rc-btn rc-font-btn" id="font-dec" type="button" aria-label="${escAttr(t(lang, 'article.fontDec'))}" title="${escAttr(t(lang, 'article.fontDec'))}">${isEn ? 'A−' : 'أ−'}</button>
+      <button class="rc-btn rc-font-btn" id="font-inc" type="button" aria-label="${escAttr(t(lang, 'article.fontInc'))}" title="${escAttr(t(lang, 'article.fontInc'))}">${isEn ? 'A+' : 'أ+'}</button>
     </div>
-    <button class="rc-btn" id="bookmark-btn" type="button" aria-pressed="false" data-slug="${a.slug}" data-title="${escAttr(a.title)}" data-icon="${escAttr(a.icon)}" data-excerpt="${escAttr(a.excerpt)}" title="حفظ للقراءة لاحقًا">${ICONS.bookmark}<span class="rc-label">حفظ</span></button>
-    <button class="rc-btn" id="copy-text-btn" type="button" title="نسخ النص" data-title="${escAttr(a.title)}">${ICONS.copyText}<span class="rc-label">انسخ النص</span></button>
-    <button class="rc-btn" id="teacher-btn" type="button" title="نسخة للمعلم">${ICONS.teacher}<span class="rc-label">للمعلم</span></button>
+    <button class="rc-btn" id="bookmark-btn" type="button" aria-pressed="false" data-slug="${escAttr(a.slug)}" data-title="${escAttr(title)}" data-icon="${escAttr(a.icon)}" data-excerpt="${escAttr(excerpt)}" data-lang="${lang}" title="${escAttr(t(lang, 'article.saveForLater'))}">${ICONS.bookmark}<span class="rc-label">${t(lang, 'article.bookmark')}</span></button>
+    <button class="rc-btn" id="copy-text-btn" type="button" title="${escAttr(t(lang, 'article.copyText'))}" data-title="${escAttr(title)}" data-lang="${lang}">${ICONS.copyText}<span class="rc-label">${t(lang, 'article.copyText')}</span></button>
+    ${teacherBtn}
   </div>`;
 
-  // Share buttons
-  const shareUrl = `${SITE_URL}/articles/${a.slug}`;
-  const shareText = encodeURIComponent(`${a.title} — كلام له لازمه`);
-  const shareBlock = `<div class="share-bar" aria-label="شارك المقال">
-    <span class="share-label">شارك:</span>
-    <a class="share-btn" data-net="whatsapp" href="https://wa.me/?text=${shareText}%20${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="شارك على واتساب">${ICONS.whatsapp}</a>
-    <a class="share-btn" data-net="x" href="https://twitter.com/intent/tweet?text=${shareText}&url=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="شارك على X">${ICONS.x}</a>
-    <a class="share-btn" data-net="telegram" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${shareText}" target="_blank" rel="noopener" aria-label="شارك على تيليجرام">${ICONS.telegram}</a>
-    <a class="share-btn" data-net="facebook" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="شارك على فيسبوك">${ICONS.facebook}</a>
-    <button class="share-btn" data-net="copy" type="button" aria-label="نسخ الرابط" data-url="${shareUrl}">${ICONS.copy}</button>
+  // Share buttons — share URL is the current language's URL
+  const shareUrl = articleUrlBase;
+  const shareTextEnc = encodeURIComponent(`${title} — ${t(lang, 'site.name')}`);
+  const shareBlock = `<div class="share-bar" aria-label="${escAttr(t(lang, 'article.shareArticle'))}">
+    <span class="share-label">${t(lang, 'article.shareLabel')}</span>
+    <a class="share-btn" data-net="whatsapp" href="https://wa.me/?text=${shareTextEnc}%20${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnWhatsapp'))}">${ICONS.whatsapp}</a>
+    <a class="share-btn" data-net="x" href="https://twitter.com/intent/tweet?text=${shareTextEnc}&url=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnX'))}">${ICONS.x}</a>
+    <a class="share-btn" data-net="telegram" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${shareTextEnc}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnTelegram'))}">${ICONS.telegram}</a>
+    <a class="share-btn" data-net="facebook" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnFacebook'))}">${ICONS.facebook}</a>
+    <button class="share-btn" data-net="copy" type="button" aria-label="${escAttr(t(lang, 'article.copyLink'))}" data-url="${shareUrl}">${ICONS.copy}</button>
   </div>`;
 
-  // Prev / next (general — not series) — redesigned as clear clickable cards
+  // Prev / next cards
+  const prevTitle = (x) => isEn ? (x.titleEn || x.title) : x.title;
+  const prevTag = (x) => localizeTag(lang, x.tag);
   const prevCard = prev ? `<a class="pn-card pn-prev" href="${prev.slug}">
-    <span class="pn-card-label">المقال السابق</span>
-    <span class="pn-card-title">${prev.title}</span>
+    <span class="pn-card-label">${t(lang, 'article.previousArticle')}</span>
+    <span class="pn-card-title">${prevTitle(prev)}</span>
     <span class="pn-card-meta">
-      <span class="pn-card-tag">${prev.tag}</span>
-      <span class="pn-card-arrow" aria-hidden="true">←</span>
+      <span class="pn-card-tag">${prevTag(prev)}</span>
+      <span class="pn-card-arrow" aria-hidden="true">${t(lang, 'article.prevArrow')}</span>
     </span>
   </a>` : '';
   const nextCard = next ? `<a class="pn-card pn-next" href="${next.slug}">
-    <span class="pn-card-label">المقال التالي</span>
-    <span class="pn-card-title">${next.title}</span>
+    <span class="pn-card-label">${t(lang, 'article.nextArticle')}</span>
+    <span class="pn-card-title">${prevTitle(next)}</span>
     <span class="pn-card-meta">
-      <span class="pn-card-tag">${next.tag}</span>
-      <span class="pn-card-arrow" aria-hidden="true">→</span>
+      <span class="pn-card-tag">${prevTag(next)}</span>
+      <span class="pn-card-arrow" aria-hidden="true">${t(lang, 'article.nextArrow')}</span>
     </span>
   </a>` : '';
-  const onlyClass = (prev && !next) || (!prev && next) ? ' is-only' : '';
   const prevNextHtml = (prev || next) ? `
-  <nav class="prev-next" aria-label="المقالات ذات الصلة">
-    <h2 class="pn-heading">اقرأ كمان</h2>
+  <nav class="prev-next" aria-label="${escAttr(t(lang, 'article.prevNextAria'))}">
+    <h2 class="pn-heading">${t(lang, 'article.readMore')}</h2>
     <div class="pn-cards">${prevCard}${nextCard}</div>
   </nav>` : '';
 
   const moreSection = others.length ? `
   <div class="more">
-    <h2>مقالات تانية</h2>
+    <h2>${t(lang, 'article.otherArticles')}</h2>
     <div class="grid" style="padding-bottom:0">
 ${otherCards}
     </div>
   </div>` : '';
 
   // Engagement section (likes + comments) — auto-works for any article by slug
+  // Same slug used for both AR + EN (likes/comments are language-agnostic)
   const engagementHtml = `
   <section class="engagement" id="engagement" data-slug="${escAttr(a.slug)}">
     <div class="like-row">
       <button class="like-btn" id="like-btn" type="button" aria-pressed="false" data-slug="${escAttr(a.slug)}">
         <span class="like-heart" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9C1 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6 4 4.5 8C19 16.5 12 21 12 21z"/></svg></span>
-        <span class="like-label">أعجبني</span>
+        <span class="like-label">${t(lang, 'engagement.like')}</span>
       </button>
-      <span class="like-count" id="like-count" data-zero="لا إعجابات بعد">…</span>
+      <span class="like-count" id="like-count" data-zero="${escAttr(t(lang, 'engagement.noLikes'))}">…</span>
       <span class="like-msg" id="like-msg" role="status" aria-live="polite"></span>
     </div>
     <div class="comments-section">
-      <h3 class="comments-head">التعليقات <span class="comments-count" id="comments-count">…</span></h3>
-      <form class="comment-form" id="comment-form" data-slug="${escAttr(a.slug)}">
+      <h3 class="comments-head">${t(lang, 'engagement.comments')} <span class="comments-count" id="comments-count">…</span></h3>
+      <form class="comment-form" id="comment-form" data-slug="${escAttr(a.slug)}" data-lang="${lang}">
         <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
         <div class="comment-form-row">
-          <input type="text" name="name" class="comment-form-name" placeholder="اسمك (اختياري)" maxlength="50" autocomplete="name">
+          <input type="text" name="name" class="comment-form-name" placeholder="${escAttr(t(lang, 'engagement.commentNamePlaceholder'))}" maxlength="50" autocomplete="name">
         </div>
-        <textarea name="text" class="comment-form-text" placeholder="اكتب تعليقك…" maxlength="1000" required></textarea>
+        <textarea name="text" class="comment-form-text" placeholder="${escAttr(t(lang, 'engagement.commentTextPlaceholder'))}" maxlength="1000" required></textarea>
         <div class="comment-form-actions">
-          <span class="comment-form-hint">بحد أقصى ١٠٠٠ حرف — من غير روابط</span>
-          <button type="submit" class="comment-submit" id="comment-submit">نشر التعليق</button>
+          <span class="comment-form-hint">${t(lang, 'engagement.commentHint')}</span>
+          <button type="submit" class="comment-submit" id="comment-submit">${t(lang, 'engagement.publishComment')}</button>
         </div>
       </form>
       <div class="comment-list" id="comment-list" aria-live="polite"></div>
@@ -443,167 +635,207 @@ ${otherCards}
   </section>`;
 
   // Hidden plain-text version for "copy text" + teacher print
-  const plainTextEsc = escAttr(a.plainText);
+  const plainTextEsc = escAttr(plainText);
+  // For EN, hide the voweled data flag
+  const voweledAvailable = isEn ? '0' : (a.voweledHtml ? '1' : '0');
+
+  // Determine language switcher target — if EN article exists, switch to opposite lang's article
+  const langSwitchTarget = isEn
+    ? (a.hasEnglish !== false ? `/articles/${a.slug}` : `/`) // EN → AR article (slug same)
+    : (a.hasEnglish ? `/en/articles/${a.slug}` : `/en/`);    // AR → EN article if translated, else EN home
+
+  const backArrow = isEn ? '←' : '→';
+  const backLabel = t(lang, 'article.backToArticles');
+  const authorInitial = isEn ? 'Z' : 'ز';
+  const authorName = t(lang, 'article.authorName');
+  const writtenBy = t(lang, 'article.writtenBy');
+  const readingTimeLabel = t(lang, 'article.readingTime', { n: fmtNum(lang, a.readingTime) });
 
   const body = `
   <div class="article-shell">
-    <a class="back" href="../"><span aria-hidden="true">→</span> كل المقالات</a>
+    <a class="back" href="${backHref}"><span aria-hidden="true">${backArrow}</span> ${backLabel}</a>
     ${seriesNavHtml}
     <header class="article-head">
       <div class="article-head-tags">
-        <a class="card-tag" href="../category/${a.categorySlug}">${a.tag}</a>
-        ${levelBadge(a.level)}
+        <a class="card-tag" href="${categoryHref}">${localizeTag(lang, a.tag)}</a>
+        ${levelBadge(a.level, lang)}
       </div>
-      <h1>${a.title}</h1>
+      <h1>${title}</h1>
       <div class="meta">
-        <span>بقلم <span class="who">زياد عمرو</span></span>
+        <span>${writtenBy} <span class="who">${authorName}</span></span>
         <span class="sep" aria-hidden="true">•</span>
-        <span>${toArabicDigits(a.readingTime)} دقايق قراءة</span>
+        <span>${readingTimeLabel}</span>
       </div>
     </header>
     ${readingControls}
     ${tocHtml}
     <div class="article-body article-body-main" id="article-main">
-${a.mainHtml}
+${renderedBody}
     </div>
-    ${a.voweledHtml ? `<div class="article-body article-body-voweled" id="article-voweled" hidden>${a.voweledHtml}</div>` : ''}
-    ${a.exercisesHtml}
+    ${(!isEn && a.voweledHtml) ? `<div class="article-body article-body-voweled" id="article-voweled" hidden>${a.voweledHtml}</div>` : ''}
+    ${!isEn ? a.exercisesHtml : ''}
     ${shareBlock}
     ${prevNextHtml}
     ${engagementHtml}
     <aside class="author-card">
-      <span class="avatar" aria-hidden="true">ز</span>
+      <span class="avatar" aria-hidden="true">${authorInitial}</span>
       <div class="author-info">
-        <div class="lbl">المؤلف</div>
-        <div class="name">زياد عمرو</div>
+        <div class="lbl">${t(lang, 'article.author')}</div>
+        <div class="name">${authorName}</div>
       </div>
       <a class="author-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">ziadamrme.vercel.app <span aria-hidden="true">↗</span></a>
     </aside>
   </div>${moreSection}
-  <script type="text/plain" id="plain-text-data" data-title="${escAttr(a.title)}">${plainTextEsc}</script>
-  <script type="text/plain" id="voweled-available" data-available="${a.voweledHtml ? '1' : '0'}"></script>`;
+  <script type="text/plain" id="plain-text-data" data-title="${escAttr(title)}" data-lang="${lang}">${plainTextEsc}</script>
+  <script type="text/plain" id="voweled-available" data-available="${voweledAvailable}"></script>
+  <script type="text/plain" id="article-lang" data-lang="${lang}"></script>`;
 
-  // JSON-LD Article structured data
+  // JSON-LD Article structured data — correct inLanguage + URL per language
   const jsonLd = JSON.stringify({
     '@context': 'https://schema.org',
     '@type': 'Article',
-    headline: a.title,
-    description: a.excerpt,
-    inLanguage: 'ar',
-    author: { '@type': 'Person', name: 'زياد عمرو', url: 'https://ziadamrme.vercel.app' },
-    publisher: { '@type': 'Person', name: 'زياد عمرو', url: 'https://ziadamrme.vercel.app' },
+    headline: title,
+    description: excerpt,
+    inLanguage: lang,
+    author: { '@type': 'Person', name: authorName, url: 'https://ziadamrme.vercel.app' },
+    publisher: { '@type': 'Person', name: authorName, url: 'https://ziadamrme.vercel.app' },
     datePublished: isoDate(a.createdTime || Date.now()),
     dateModified: isoDate(a.lastEditedTime || a.createdTime || Date.now()),
-    mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE_URL}/articles/${a.slug}` },
-    url: `${SITE_URL}/articles/${a.slug}`,
-    articleSection: a.tag,
-    ...(a.level ? { educationalLevel: a.level } : {}),
-    ...(a.series ? { isPartOf: { '@type': 'CreativeWorkSeries', name: a.series, position: a.seriesOrder } } : {}),
+    mainEntityOfPage: { '@type': 'WebPage', '@id': articleUrlBase },
+    url: articleUrlBase,
+    articleSection: localizeTag(lang, a.tag),
+    ...(a.level ? { educationalLevel: localizeLevel(lang, a.level) } : {}),
+    ...(a.series && !isEn ? { isPartOf: { '@type': 'CreativeWorkSeries', name: a.series, position: a.seriesOrder } } : {}),
   });
 
   return shell({
-    title: `${a.title} — كلام له لازمه`,
-    metaDesc: a.excerpt || '',
+    title: `${title} — ${t(lang, 'site.name')}`,
+    metaDesc: excerpt || '',
     body,
-    depth: 1,
-    canonical: `${SITE_URL}/articles/${a.slug}`,
+    depth: articleDepth,
+    lang,
+    canonical: articleUrlBase,
+    alternateHref: alternateUrl,
+    langSwitchHref: langSwitchTarget,
     ogImage: `${SITE_URL}/og/${a.slug}.svg`,
     jsonLd,
   });
 }
 
 // ── Category page ─────────────────────────────────────────────────────────────
-function buildCategoryPage(catName, catSlug, articles, depth = 1) {
-  const cards = articles.map(a => card(a, depth)).join('\n');
+function buildCategoryPage(catName, catSlug, articles, depth = 1, lang = 'ar') {
+  const cards = articles.map(a => card(a, depth, lang)).join('\n');
+  const heroQuote = t(lang, 'home.heroQuote');
+  const articlesInLabel = articles.length === 1
+    ? t(lang, 'category.articlesInOne', { n: fmtNum(lang, articles.length) })
+    : t(lang, 'category.articlesInMany', { n: fmtNum(lang, articles.length) });
+  const articlesOfLabel = t(lang, 'category.articlesOf', { name: catName });
+  const allArticlesLabel = t(lang, 'category.allArticles');
+  const backHref = depth === 0 ? '/' : (depth === 1 ? '../' : '../../');
   const body = `
   <div class="hero" style="padding:60px 24px 50px">
-    <span class="hero-quote" aria-hidden="true">”</span>
-    <h1 style="font-size:clamp(36px,6vw,52px)">${catName}</h1>
-    <p class="tag">${toArabicDigits(articles.length)} ${articles.length === 1 ? 'مقال' : 'مقالات'} في التصنيف ده</p>
+    <span class="hero-quote" aria-hidden="true">${heroQuote}</span>
+    <h1 style="font-size:clamp(36px,6vw,52px)">${escAttr(catName)}</h1>
+    <p class="tag">${articlesInLabel}</p>
     <div class="orn-line" aria-hidden="true">✦</div>
   </div>
   <div class="wrap">
     <div class="section-head">
-      <h2>مقالات «${catName}»</h2>
-      <a href="${depth === 0 ? '/' : '../'}" style="color:var(--muted);font-size:14px;font-weight:700">← كل المقالات</a>
+      <h2>${articlesOfLabel}</h2>
+      <a href="${backHref}" style="color:var(--muted);font-size:14px;font-weight:700">${allArticlesLabel}</a>
     </div>
     <div class="grid">
 ${cards}
     </div>
   </div>`;
   return shell({
-    title: `${catName} — كلام له لازمه`,
-    metaDesc: `مقالات في تصنيف «${catName}» على كلام له لازمه.`,
+    title: `${catName}${t(lang, 'category.titleSuffix')}`,
+    metaDesc: t(lang, 'category.metaDesc', { name: catName }),
     body,
     depth,
-    canonical: `${SITE_URL}/category/${catSlug}`,
+    lang,
+    canonical: lang === 'en' ? `${SITE_URL}/en/category/${catSlug}` : `${SITE_URL}/category/${catSlug}`,
+    alternateHref: lang === 'en' ? `${SITE_URL}/category/${catSlug}` : `${SITE_URL}/en/category/${catSlug}`,
+    langSwitchHref: lang === 'en' ? `/category/${catSlug}` : `/en/category/${catSlug}`,
     ogImage: `${SITE_URL}/og-default.svg`,
   });
 }
 
 // ── 404 page ──────────────────────────────────────────────────────────────────
-function build404() {
+function build404(lang = 'ar') {
+  const backHref = lang === 'en' ? '/en/' : '/';
   const body = `
   <div class="not-found">
-    <div class="nf-code">٤٠٤</div>
-    <h1>الصفحة دي مش موجودة</h1>
-    <p>يمكن الرابط اتغيّر أو الصفحة اتمسحت. خلّينا نرجّعك للرئيسية عشان تقرأ أحدث المقالات.</p>
-    <a class="nf-btn" href="/">→ الرجوع للرئيسية</a>
+    <div class="nf-code">${t(lang, 'notFound.code')}</div>
+    <h1>${t(lang, 'notFound.title')}</h1>
+    <p>${t(lang, 'notFound.desc')}</p>
+    <a class="nf-btn" href="${backHref}">${t(lang, 'notFound.backHome')}</a>
   </div>`;
   return shell({
-    title: '٤٠٤ — الصفحة مش موجودة | كلام له لازمه',
-    metaDesc: 'الصفحة غير موجودة.',
+    title: t(lang, 'notFound.htmlTitle'),
+    metaDesc: t(lang, 'notFound.metaDesc'),
     body,
-    depth: 0,
-    canonical: `${SITE_URL}/404`,
+    depth: lang === 'en' ? 1 : 0,
+    lang,
+    canonical: lang === 'en' ? `${SITE_URL}/en/404` : `${SITE_URL}/404`,
+    langSwitchHref: lang === 'en' ? '/404' : '/en/404',
   });
 }
 
 // ── About page ───────────────────────────────────────────────────────────────
-function buildAbout() {
+function buildAbout(lang = 'ar') {
+  const backHref = lang === 'en' ? '/en/' : '/';
+  const backArrow = lang === 'en' ? '←' : '→';
+  const backLabel = t(lang, 'article.backToHome');
   const body = `
   <div class="about-shell">
-    <a class="back" href="/"><span aria-hidden="true">→</span> الرئيسية</a>
-    <h1>عن «كلام له لازمه»</h1>
-    <p class="lead">مش كل كلام لازم يتقال… لكن فيه كلام لازم يتقال.</p>
-    <p>«كلام له لازمه» هو مشروع مقالات عربي هادف بيكتبه <strong>زياد عمرو</strong>. الفكرة بسيطة: إننا نرجّع للكلمة وزنها، ونكتب في الوعي والقيم والأخلاق بلغة قريبة من القلب — بلا تكلف وبلا تعقيد، بس بحرص على المعنى وعمق في الطرح.</p>
-    <h2>إيه اللي بنكتب فيه؟</h2>
-    <p>بنكتب في مواضيع بتلمس حياتنا اليومية: الوعي الرقمي، الأخلاق والتزكية، القيم والمجتمع، العلاقات الإنسانية، وكل ما يمسّ القلب والوجدان. الهدف مش الوعظ بقدر ما هو إثارة أسئلة وتقديم رؤية — دينًا واجتماعًا وإنسانية — تساعد القارئ يقف مع نفسه شوية.</p>
-    <h2>مين ورا الكلام ده؟</h2>
-    <p>أنا <strong>زياد عمرو</strong>، كاتب مهتم بالكلمة الهادية والمعنى العميق. بتلاقيني على موقعي الشخصي وفيه باقي أعمالي وكتاباتي:</p>
+    <a class="back" href="${backHref}"><span aria-hidden="true">${backArrow}</span> ${backLabel}</a>
+    <h1>${t(lang, 'about.title')}</h1>
+    <p class="lead">${t(lang, 'about.lead')}</p>
+    <p>${t(lang, 'about.p1')}</p>
+    <h2>${t(lang, 'about.h1')}</h2>
+    <p>${t(lang, 'about.p2')}</p>
+    <h2>${t(lang, 'about.h2')}</h2>
+    <p>${t(lang, 'about.p3')}</p>
     <p><a class="author-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;padding:11px 20px;border-radius:999px;font-weight:800;font-size:14px">ziadamrme.vercel.app <span aria-hidden="true">↗</span></a></p>
-    <h2>إزاي تواصلني؟</h2>
-    <p>لو عندك ملاحظة، اقتراح لموضوع، أو حابة تشاركني في فكرة — تقدر توصلني من خلال موقعي الشخصي. رأيك بيهمني، وأي حوار بسيط بيفتح باب لفهم أعمق.</p>
+    <h2>${t(lang, 'about.h3')}</h2>
+    <p>${t(lang, 'about.p4')}</p>
     <div class="orn" aria-hidden="true">✦</div>
-    <p style="text-align:center;color:var(--muted);font-size:15px">شكرًا إنك قرأت لحد هنا. يلا نكمّل.</p>
+    <p style="text-align:center;color:var(--muted);font-size:15px">${t(lang, 'about.thanks')}</p>
   </div>`;
   return shell({
-    title: 'عن الموقع — كلام له لازمه',
-    metaDesc: 'تعريف بمشروع «كلام له لازمه» ومؤلفه زياد عمرو.',
+    title: t(lang, 'about.htmlTitle'),
+    metaDesc: t(lang, 'about.metaDesc'),
     body,
-    depth: 0,
-    canonical: `${SITE_URL}/about`,
+    depth: lang === 'en' ? 1 : 0,
+    lang,
+    canonical: lang === 'en' ? `${SITE_URL}/en/about` : `${SITE_URL}/about`,
+    alternateHref: lang === 'en' ? `${SITE_URL}/about` : `${SITE_URL}/en/about`,
+    langSwitchHref: lang === 'en' ? '/about' : '/en/about',
     ogImage: `${SITE_URL}/og-default.svg`,
   });
 }
 
 // ── /admin page (protected by ADMIN_TOKEN — login form, no server-rendered secrets) ──
+// Admin stays Arabic-only — it's a backend moderation tool, not public-facing content.
+// The /en/admin URL is intentionally not generated.
 function buildAdmin() {
+  const lang = 'ar';
   const body = `
   <div class="admin-shell" id="admin-root">
     <div class="admin-login" id="admin-login">
-      <h1>لوحة الإدارة</h1>
-      <p>أدخل التوكن لمشاهدة وحذف التعليقات</p>
+      <h1>${t(lang, 'admin.title')}</h1>
+      <p>${t(lang, 'admin.loginPrompt')}</p>
       <input type="password" id="admin-token-input" placeholder="ADMIN_TOKEN" autocomplete="off">
-      <button type="button" id="admin-login-btn">دخول</button>
+      <button type="button" id="admin-login-btn">${t(lang, 'admin.login')}</button>
       <p id="admin-login-error" style="color:#A83232;font-size:13px;margin-top:10px;display:none"></p>
     </div>
     <div id="admin-content" hidden>
-      <a class="back" href="/" style="margin-bottom:18px"><span aria-hidden="true">→</span> الرئيسية</a>
-      <h1 style="font-family:var(--font-display);font-size:30px;font-weight:700;margin:0 0 8px">لوحة إدارة التعليقات</h1>
-      <p style="color:var(--muted);font-size:14px;margin-bottom:18px">إجمالي التعليقات واللايكات لكل مقال، مع إمكانية حذف أي تعليق مسيء.</p>
+      <a class="back" href="/" style="margin-bottom:18px"><span aria-hidden="true">→</span> ${t(lang, 'article.backToHome')}</a>
+      <h1 style="font-family:var(--font-display);font-size:30px;font-weight:700;margin:0 0 8px">${t(lang, 'admin.dashboardTitle')}</h1>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:18px">${t(lang, 'admin.dashboardDesc')}</p>
       <div class="admin-stats" id="admin-stats"></div>
-      <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;margin:24px 0 14px">كل التعليقات</h2>
+      <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;margin:24px 0 14px">${t(lang, 'admin.allComments')}</h2>
       <div id="admin-comments"></div>
     </div>
   </div>
@@ -619,8 +851,8 @@ function buildAdmin() {
       $('admin-login-error').textContent = '';
       fetch('/api/admin-stats', { headers: { 'X-Admin-Token': token } })
         .then(function(r){
-          if (r.status === 401) { throw new Error('توكن غلط'); }
-          if (!r.ok) { throw new Error('مشكلة في السيرفر'); }
+          if (r.status === 401) { throw new Error('${t(lang, 'admin.wrongToken')}'); }
+          if (!r.ok) { throw new Error('${t(lang, 'admin.serverError')}'); }
           return r.json();
         })
         .then(function(stats){
@@ -628,7 +860,7 @@ function buildAdmin() {
           showDashboard(token, stats);
         })
         .catch(function(e){
-          $('admin-login-error').textContent = e.message || 'فيه مشكلة';
+          $('admin-login-error').textContent = e.message || '${t(lang, 'admin.problem')}';
           $('admin-login-error').style.display = 'block';
         });
     }
@@ -636,18 +868,16 @@ function buildAdmin() {
     function showDashboard(token, stats){
       $('admin-login').hidden = true;
       $('admin-content').hidden = false;
-      // Stats
       var statsHtml = '';
-      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.totalComments || 0) + '</div><div class="lbl">تعليق</div></div>';
-      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.totalLikes || 0) + '</div><div class="lbl">إعجاب</div></div>';
-      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.slugs ? stats.slugs.length : 0) + '</div><div class="lbl">مقال بتعليقات</div></div>';
+      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.totalComments || 0) + '</div><div class="lbl">${t(lang, 'admin.totalComments')}</div></div>';
+      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.totalLikes || 0) + '</div><div class="lbl">${t(lang, 'admin.totalLikes')}</div></div>';
+      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.slugs ? stats.slugs.length : 0) + '</div><div class="lbl">${t(lang, 'admin.articlesWithComments')}</div></div>';
       $('admin-stats').innerHTML = statsHtml;
-      // Load all comments
       fetch('/api/comment-admin?all=1', { headers: { 'X-Admin-Token': token } })
         .then(function(r){ return r.json(); })
         .then(function(d){
           if (!d.items || d.items.length === 0) {
-            $('admin-comments').innerHTML = '<div class="admin-empty">مفيش تعليقات لحد دلوقتي</div>';
+            $('admin-comments').innerHTML = '<div class="admin-empty">${t(lang, 'admin.noComments')}</div>';
             return;
           }
           var html = d.items.map(function(c){
@@ -658,15 +888,14 @@ function buildAdmin() {
               '</div>' +
               '<div class="admin-comment-text">' + escapeHtml(c.text || '') + '</div>' +
               '<div class="admin-comment-actions">' +
-                '<button class="admin-delete-btn" data-id="' + c.id + '" data-slug="' + c.slug + '">حذف</button>' +
+                '<button class="admin-delete-btn" data-id="' + c.id + '" data-slug="' + c.slug + '">${t(lang, 'admin.delete')}</button>' +
               '</div>' +
             '</div>';
           }).join('');
           $('admin-comments').innerHTML = html;
-          // Wire delete buttons
           document.querySelectorAll('.admin-delete-btn').forEach(function(btn){
             btn.addEventListener('click', function(){
-              if (!confirm('متأكد إنك عايز تمسح التعليق ده؟')) return;
+              if (!confirm('${t(lang, 'admin.confirmDelete')}')) return;
               var id = btn.getAttribute('data-id');
               var slug = btn.getAttribute('data-slug');
               fetch('/api/comment-admin?id=' + encodeURIComponent(id) + '&slug=' + encodeURIComponent(slug), {
@@ -677,9 +906,9 @@ function buildAdmin() {
                   var card = btn.closest('.admin-comment');
                   if (card) card.remove();
                 } else {
-                  alert(d.error || 'مشكلة في الحذف');
+                  alert(d.error || '${t(lang, 'admin.deleteError')}');
                 }
-              }).catch(function(){ alert('مشكلة في الشبكة'); });
+              }).catch(function(){ alert('${t(lang, 'admin.networkError')}'); });
             });
           });
         });
@@ -698,7 +927,6 @@ function buildAdmin() {
       if (e.key === 'Enter') login($('admin-token-input').value);
     });
 
-    // Auto-login if saved token exists
     if (savedToken) {
       $('admin-token-input').value = savedToken;
       login(savedToken);
@@ -706,10 +934,11 @@ function buildAdmin() {
   })();
   </script>`;
   return shell({
-    title: 'لوحة الإدارة — كلام له لازمه',
-    metaDesc: 'لوحة إدارة التعليقات (للمشرف فقط).',
+    title: t(lang, 'admin.htmlTitle'),
+    metaDesc: t(lang, 'admin.metaDesc'),
     body,
     depth: 0,
+    lang,
     canonical: `${SITE_URL}/admin`,
     ogImage: `${SITE_URL}/og-default.svg`,
   });
@@ -983,12 +1212,14 @@ function blocksToPlainText(blocks) {
 }
 
 // ── Get article data: main html + voweled html + exercises + plain text ───────
+// Also extracts English body from "English Version" toggle if present.
 async function getArticleData(pageId) {
   const allBlocks = await fetchBlockTree(pageId);
 
   let mainBlocks = [];
   let voweledBlocks = null;
   let exerciseBlocks = [];
+  let englishBlocks = null;
 
   let inExercises = false;
   for (const b of allBlocks) {
@@ -999,8 +1230,9 @@ async function getArticleData(pageId) {
       voweledBlocks = b._children || [];
       continue;
     }
-    // Toggle "English Version" → skip everywhere
+    // Toggle "English Version" → save its children as the English version
     if (b.type === 'toggle' && text === 'English Version') {
+      englishBlocks = b._children || [];
       continue;
     }
     // heading_2 "تدريبات" → exercises section starts
@@ -1021,7 +1253,166 @@ async function getArticleData(pageId) {
   const exercisesHtml = renderExercises(exercises);
   const plainText = blocksToPlainText(mainBlocks);
 
-  return { mainHtml, voweledHtml, exercisesHtml, exercises, plainText };
+  // English body — rendered with verse/hadith blockquote detection
+  const englishHtml = englishBlocks && englishBlocks.length
+    ? renderBlocksEn(englishBlocks).trim()
+    : null;
+  const englishPlainText = englishBlocks && englishBlocks.length
+    ? blocksToPlainText(englishBlocks)
+    : '';
+
+  return { mainHtml, voweledHtml, exercisesHtml, exercises, plainText, englishHtml, englishPlainText, hasEnglish: !!(englishBlocks && englishBlocks.length) };
+}
+
+// ── English block renderer ─────────────────────────────────────────────────────
+// Same as renderBlocks, but:
+// 1. Detects English verse/hadith patterns in paragraphs and renders them as
+//    blockquotes (.verse-en / .hadith-en).
+// 2. Treats the LAST paragraph of the body as the closing (.closing).
+// 3. Skips "النسخة المشكولة" / "English Version" / "تدريبات" toggles defensively
+//    (shouldn't appear inside English toggle, but just in case).
+function renderBlocksEn(blocks) {
+  // Make a shallow copy so we can detect "last paragraph" without mutating caller
+  const blockList = blocks.filter(b => {
+    const text = getBlockPlainText(b).trim();
+    if (b.type === 'toggle' && (text === 'النسخة المشكولة' || text === 'English Version')) return false;
+    if (b.type === 'heading_2' && text === 'تدريبات') return false;
+    return true;
+  });
+
+  // Find index of last paragraph for closing transformation
+  let lastParagraphIdx = -1;
+  for (let i = blockList.length - 1; i >= 0; i--) {
+    if (blockList[i].type === 'paragraph') { lastParagraphIdx = i; break; }
+  }
+
+  let html = '';
+  let i = 0;
+  // No Quran/hadith tag transforms — verses/hadiths in English are detected by quote+citation pattern
+  const transforms = (s) => s;
+
+  while (i < blockList.length) {
+    const b = blockList[i];
+    const t = b.type;
+
+    if (t === 'bulleted_list_item') {
+      html += '<ul>';
+      while (i < blockList.length && blockList[i].type === 'bulleted_list_item') {
+        html += `<li>${transforms(renderRichText(getBlockRichText(blockList[i])))}</li>`;
+        i++;
+      }
+      html += '</ul>';
+      continue;
+    }
+    if (t === 'numbered_list_item') {
+      html += '<ol>';
+      while (i < blockList.length && blockList[i].type === 'numbered_list_item') {
+        html += `<li>${transforms(renderRichText(getBlockRichText(blockList[i])))}</li>`;
+        i++;
+      }
+      html += '</ol>';
+      continue;
+    }
+
+    const text = transforms(renderRichText(getBlockRichText(b)));
+    switch (t) {
+      case 'heading_1': html += `<h1>${text}</h1>`; break;
+      case 'heading_2': html += `<h2>${text}</h2>`; break;
+      case 'heading_3': html += `<h3>${text}</h3>`; break;
+      case 'paragraph':
+        if (!text) { i++; break; }
+        // Last paragraph → wrap in .closing
+        if (i === lastParagraphIdx) {
+          html += `<div class="closing">${text}</div>`;
+        } else {
+          // Detect verse/hadith quote+citation patterns in this paragraph
+          html += transformEnglishQuoteParagraph(text);
+        }
+        break;
+      case 'divider': html += '<hr>'; break;
+      case 'quote': html += `<blockquote>${text}</blockquote>`; break;
+      case 'callout': html += `<div class="callout">${text}</div>`; break;
+      case 'toggle':
+        html += `<details class="toggle"><summary>${text}</summary>${renderBlocksEn(b._children || [])}</details>`;
+        break;
+      case 'image': {
+        const url = b.image?.external?.url || b.image?.file?.url || '';
+        const cap = renderRichText(b.image?.caption || []);
+        html += `<figure class="img"><img src="${escapeHtml(url)}" alt="${escapeHtml(cap)}" loading="lazy">${cap ? `<figcaption>${cap}</figcaption>` : ''}</figure>`;
+        break;
+      }
+      case 'bookmark': {
+        const url = b.bookmark?.url || '';
+        html += `<p><a href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a></p>`;
+        break;
+      }
+      default:
+        html += text ? `<p>${text}</p>` : '';
+    }
+    i++;
+  }
+  // Ornamental divider before each h2 (matches Arabic design)
+  html = html.replace(/<h2>/g, '<div aria-hidden="true" class="orn">✦</div>\n<h2>');
+  // Drop empty <p></p> leftovers
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  return html;
+}
+
+// ── English verse/hadith quote detector ────────────────────────────────────────
+// Pattern: a paragraph contains "quoted text" [citation] — extract the quote
+// and render as <blockquote class="verse-en"> or .hadith-en.
+// Citation examples: [Muslim], [Bukhari], [Agreed upon], [Quran 7:199],
+// [Al-Hujurat 49:11], [Tirmidhi], etc.
+// Surrounding commentary text is kept as regular paragraphs (split before/after).
+function transformEnglishQuoteParagraph(paragraphHtml) {
+  // Match: "..." or "..." (curly quotes) followed by optional [citation]
+  // Use a regex that handles both straight and curly quotes
+  const re = /([""]([^""]{8,400})[""]|'([^']{8,400})')\s*(\[[A-Za-z][A-Za-z\s\d:.\-'’]+?\])/g;
+
+  // If no match, render as regular paragraph
+  re.lastIndex = 0;
+  const matches = [];
+  let m;
+  while ((m = re.exec(paragraphHtml)) !== null) {
+    matches.push({
+      full: m[0],
+      quote: m[2] || m[3],
+      citation: m[4],
+      index: m.index,
+      end: m.index + m[0].length,
+    });
+  }
+
+  if (matches.length === 0) {
+    return `<p>${paragraphHtml}</p>`;
+  }
+
+  // Build output: alternate paragraphs of commentary with blockquotes of quotes
+  let result = '';
+  let lastEnd = 0;
+  for (const mt of matches) {
+    const before = paragraphHtml.slice(lastEnd, mt.index).trim();
+    if (before) {
+      // Strip leading colon/comma/period from "before" if it's just punctuation
+      const cleaned = before.replace(/^[\s:;,.—–-]+/, '').trim();
+      if (cleaned) result += `<p>${cleaned}</p>`;
+    }
+    // Classify verse vs hadith based on citation + surrounding context (the "before" text)
+    const hadithKeywords = /Muslim|Bukhari|Agreed|Tirmidhi|Abu Dawud|Ibn Majah|Nasai|Ahmad|Tabari|Bayhaqi|Malik|Prophet|Messenger|ﷺ|hadith/i;
+    const verseKeywords = /Quran|Surah|Al-|An-|Verse|Ayah|Allah said|Allah says|Allah revealed/i;
+    const contextText = (paragraphHtml.slice(Math.max(0, mt.index - 100), mt.index)) + ' ' + mt.citation;
+    const isHadith = hadithKeywords.test(contextText) && !verseKeywords.test(mt.citation);
+    const isVerse = verseKeywords.test(mt.citation) || (!isHadith && /Allah|revealed|verse/i.test(contextText));
+    const cls = isHadith ? 'hadith-en' : (isVerse ? 'verse-en' : 'hadith-en');
+    result += `<blockquote class="${cls}"><p>${escapeHtml(mt.quote)}</p><cite>${escapeHtml(mt.citation)}</cite></blockquote>`;
+    lastEnd = mt.end;
+  }
+  const after = paragraphHtml.slice(lastEnd).trim();
+  if (after) {
+    const cleaned = after.replace(/^[\s:;,.—–-]+/, '').trim();
+    if (cleaned) result += `<p>${cleaned}</p>`;
+  }
+  return result || `<p>${paragraphHtml}</p>`;
 }
 
 // ── Minify helpers (lightweight, no deps) ─────────────────────────────────────
@@ -1084,30 +1475,61 @@ function buildOgSvg({ title, subtitle = 'كلام له لازمه' }) {
 }
 
 // ── Build sitemap.xml ─────────────────────────────────────────────────────────
+// Includes Arabic URLs (root) + English URLs (/en/) + hreflang alternates
 function buildSitemap(articles, categories) {
   const urls = [
-    { loc: `${SITE_URL}/`, priority: '1.0', changefreq: 'daily' },
-    { loc: `${SITE_URL}/start`, priority: '0.8', changefreq: 'monthly' },
-    { loc: `${SITE_URL}/about`, priority: '0.6', changefreq: 'monthly' },
+    { loc: `${SITE_URL}/`, priority: '1.0', changefreq: 'daily', alternates: [`${SITE_URL}/en/`] },
+    { loc: `${SITE_URL}/start`, priority: '0.8', changefreq: 'monthly', alternates: [`${SITE_URL}/en/start`] },
+    { loc: `${SITE_URL}/about`, priority: '0.6', changefreq: 'monthly', alternates: [`${SITE_URL}/en/about`] },
+    // English root pages
+    { loc: `${SITE_URL}/en/`, priority: '0.9', changefreq: 'daily', alternates: [`${SITE_URL}/`] },
+    { loc: `${SITE_URL}/en/start`, priority: '0.7', changefreq: 'monthly', alternates: [`${SITE_URL}/start`] },
+    { loc: `${SITE_URL}/en/about`, priority: '0.5', changefreq: 'monthly', alternates: [`${SITE_URL}/about`] },
   ];
   for (const c of categories) {
-    urls.push({ loc: `${SITE_URL}/category/${c.slug}`, priority: '0.5', changefreq: 'weekly' });
+    urls.push({
+      loc: `${SITE_URL}/category/${c.slug}`,
+      priority: '0.5', changefreq: 'weekly',
+      alternates: [`${SITE_URL}/en/category/${c.slug}`],
+    });
+    // English category page — only include if at least one translated article exists in this category
+    const hasTranslated = c.articles.some(a => a.translated);
+    if (hasTranslated) {
+      urls.push({
+        loc: `${SITE_URL}/en/category/${c.slug}`,
+        priority: '0.4', changefreq: 'weekly',
+        alternates: [`${SITE_URL}/category/${c.slug}`],
+      });
+    }
   }
   for (const a of articles) {
+    const lastmod = isoDate(a.lastEditedTime || a.createdTime || Date.now());
     urls.push({
       loc: `${SITE_URL}/articles/${a.slug}`,
-      priority: '0.8',
-      changefreq: 'monthly',
-      lastmod: isoDate(a.lastEditedTime || a.createdTime || Date.now()),
+      priority: '0.8', changefreq: 'monthly', lastmod,
+      alternates: a.translated ? [`${SITE_URL}/en/articles/${a.slug}`] : [],
     });
+    if (a.translated) {
+      urls.push({
+        loc: `${SITE_URL}/en/articles/${a.slug}`,
+        priority: '0.7', changefreq: 'monthly', lastmod,
+        alternates: [`${SITE_URL}/articles/${a.slug}`],
+      });
+    }
   }
-  const body = urls.map(u => `  <url>
+  const body = urls.map(u => {
+    const altLinks = (u.alternates || []).map((alt, i) => {
+      const lang = alt.startsWith(`${SITE_URL}/en/`) ? 'en' : 'ar';
+      return `    <xhtml:link rel="alternate" hreflang="${lang}" href="${alt}"/>`;
+    }).join('\n');
+    return `  <url>
     <loc>${u.loc}</loc>
     <changefreq>${u.changefreq}</changefreq>
-    <priority>${u.priority}</priority>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
-  </url>`).join('\n');
+    <priority>${u.priority}</priority>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}${altLinks ? '\n' + altLinks : ''}
+  </url>`;
+  }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
 ${body}
 </urlset>`;
 }
@@ -1121,43 +1543,63 @@ Sitemap: ${SITE_URL}/sitemap.xml
 `;
 }
 
-// ── Build RSS feed ───────────────────────────────────────────────────────────
-function buildRss(articles) {
-  const items = articles.map(a => `    <item>
-      <title>${escXml(a.title)}</title>
-      <link>${SITE_URL}/articles/${a.slug}</link>
-      <guid>${SITE_URL}/articles/${a.slug}</guid>
-      <description>${escXml(a.excerpt)}</description>
-      <category>${escXml(a.tag)}</category>${a.createdTime ? `\n      <pubDate>${new Date(a.createdTime).toUTCString()}</pubDate>` : ''}
-    </item>`).join('\n');
+// ── Build RSS feed (language-aware) ───────────────────────────────────────────
+// lang='ar' → /feed.xml with Arabic articles
+// lang='en' → /en/rss.xml with translated articles only
+function buildRss(articles, lang = 'ar') {
+  const feedArticles = lang === 'en' ? articles.filter(a => a.translated) : articles;
+  const selfHref = lang === 'en' ? `${SITE_URL}/en/rss.xml` : `${SITE_URL}/feed.xml`;
+  const siteName = t(lang, 'site.name');
+  const siteDesc = t(lang, 'site.description');
+  const articlePath = lang === 'en' ? `${SITE_URL}/en/articles/` : `${SITE_URL}/articles/`;
+  const items = feedArticles.map(a => {
+    const title = lang === 'en' ? (a.titleEn || a.title) : a.title;
+    const excerpt = lang === 'en' ? (a.excerptEn || a.excerpt) : a.excerpt;
+    const tag = localizeTag(lang, a.tag);
+    return `    <item>
+      <title>${escXml(title)}</title>
+      <link>${articlePath}${a.slug}</link>
+      <guid>${articlePath}${a.slug}</guid>
+      <description>${escXml(excerpt)}</description>
+      <category>${escXml(tag)}</category>${a.createdTime ? `\n      <pubDate>${new Date(a.createdTime).toUTCString()}</pubDate>` : ''}
+    </item>`;
+  }).join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>كلام له لازمه</title>
-    <link>${SITE_URL}</link>
-    <atom:link href="${SITE_URL}/feed.xml" rel="self" type="application/rss+xml"/>
-    <description>مقالات هادية في الوعي والقيم والأخلاق بقلم زياد عمرو.</description>
-    <language>ar</language>
+    <title>${escXml(siteName)}</title>
+    <link>${SITE_URL}${lang === 'en' ? '/en/' : '/'}</link>
+    <atom:link href="${selfHref}" rel="self" type="application/rss+xml"/>
+    <description>${escXml(siteDesc)}</description>
+    <language>${lang}</language>
 ${items}
   </channel>
 </rss>`;
 }
 
-// ── Build search-index.json ──────────────────────────────────────────────────
-function buildSearchIndex(articles) {
-  return JSON.stringify(articles.map(a => ({
-    title: a.title,
-    excerpt: a.excerpt,
-    tag: a.tag,
-    categorySlug: a.categorySlug,
-    slug: a.slug,
-    icon: a.icon,
-    readingTime: a.readingTime,
-    level: a.level || '',
-    series: a.series || '',
-    hasVoweled: !!a.voweledHtml,
-    hasExercises: !!(a.exercises && a.exercises.length),
-  })));
+// ── Build search-index.json (language-aware) ──────────────────────────────────
+// Each language has its own search index with its own content
+function buildSearchIndex(articles, lang = 'ar') {
+  const feedArticles = lang === 'en' ? articles.filter(a => a.translated) : articles;
+  return JSON.stringify(feedArticles.map(a => {
+    const title = lang === 'en' ? (a.titleEn || a.title) : a.title;
+    const excerpt = lang === 'en' ? (a.excerptEn || a.excerpt) : a.excerpt;
+    const tag = localizeTag(lang, a.tag);
+    return {
+      title,
+      excerpt,
+      tag,
+      categorySlug: a.categorySlug,
+      slug: a.slug,
+      icon: a.icon,
+      readingTime: a.readingTime,
+      level: a.level || '',
+      series: a.series || '',
+      hasVoweled: lang === 'ar' && !!a.voweledHtml,
+      hasExercises: lang === 'ar' && !!(a.exercises && a.exercises.length),
+      lang,
+    };
+  }));
 }
 
 // ── Client-side app.js (search + theme toggle + share copy) ──────────────────
@@ -1165,6 +1607,39 @@ function buildAppJs() {
   return `
 (function(){
   "use strict";
+  // ---------- i18n (loaded from server-rendered locale JSON, fallback to ar) ----------
+  var I18N_RAW = window.SITE_I18N || {};
+  var LANG = window.SITE_LANG || "ar";
+  var I18N = I18N_RAW[LANG] || I18N_RAW.ar || {};
+  // Fallbacks for any missing keys
+  I18N.searchLoading = I18N.searchLoading || "جاري تحميل الفهرس…";
+  I18N.searchNoResults = I18N.searchNoResults || "مفيش نتائج تطابق بحثك.";
+  I18N.like = I18N.like || "أعجبني";
+  I18N.liked = I18N.liked || "أعجبك";
+  I18N.thanksForLike = I18N.thanksForLike || "شكرًا لإعجابك";
+  I18N.alreadyLiked = I18N.alreadyLiked || "تم تسجيل إعجابك قبل كده";
+  I18N.rateLimited = I18N.rateLimited || "وصلت للحد الأقصى";
+  I18N.likeError = I18N.likeError || "فيه مشكلة، حاول تاني";
+  I18N.noLikes = I18N.noLikes || "لا إعجابات بعد";
+  I18N.publishing = I18N.publishing || "جاري النشر…";
+  I18N.publishComment = I18N.publishComment || "نشر التعليق";
+  I18N.commentError = I18N.commentError || "فيه مشكلة، حاول تاني";
+  I18N.noComments = I18N.noComments || "لسه مفيش تعليقات — كن أول واحد يكتب";
+  I18N.guest = I18N.guest || "زائر";
+  I18N.now = I18N.now || "الآن";
+  I18N.bookmarked = I18N.bookmarked || "محفوظ";
+  I18N.bookmark = I18N.bookmark || "حفظ";
+  I18N.copyTextDone = I18N.copyTextDone || "اتنسخ ✓";
+  I18N.answerCorrect = I18N.answerCorrect || "✓ إجابة صحيحة! أحسنت.";
+  I18N.answerWrong = I18N.answerWrong || "✗ مش صحيحة — شوف الإجابة الصحيحة باللون الأخضر.";
+  I18N.clearAllConfirm = I18N.clearAllConfirm || "تمسح كل المحفوظات؟";
+  I18N.saved = I18N.saved || "محفوظ";
+  I18N.readArticle = I18N.readArticle || "اقرأ المقال";
+  I18N.clearAll = I18N.clearAll || "مسح الكل";
+  I18N.minutesAgo = I18N.minutesAgo || "منذ {n} دقيقة";
+  I18N.hoursAgo = I18N.hoursAgo || "منذ {n} ساعة";
+  I18N.daysAgo = I18N.daysAgo || "منذ {n} يوم";
+  I18N.likesCount = I18N.likesCount || "إعجاب";
   // ---------- Theme toggle ----------
   var THEME_KEY = "kalaam-theme";
   var savedTheme = null;
@@ -1206,7 +1681,10 @@ function buildAppJs() {
   }
   function loadIndex(){
     var base = window.SITE_BASE || "";
-    fetch(base + "search-index.json")
+    var lang = window.SITE_LANG || "ar";
+    // Arabic: /search-index.json   English: /en/search-index.json
+    var idxUrl = lang === "en" ? "/en/search-index.json" : "/search-index.json";
+    fetch(idxUrl)
       .then(function(r){ return r.json(); })
       .then(function(d){ searchIndex = d; })
       .catch(function(){ searchIndex = []; });
@@ -1227,18 +1705,20 @@ function buildAppJs() {
   function renderResults(q){
     if (!searchResults) return;
     if (!q) { searchResults.innerHTML = ""; return; }
-    if (!searchIndex) { searchResults.innerHTML = '<div class="search-empty">جاري تحميل الفهرس…</div>'; return; }
+    var lang = window.SITE_LANG || "ar";
+    if (!searchIndex) { searchResults.innerHTML = '<div class="search-empty">' + I18N.searchLoading + '</div>'; return; }
     var nQ = normalize(q);
     var matches = searchIndex.filter(function(a){
       return normalize(a.title).indexOf(nQ) >= 0 || normalize(a.excerpt).indexOf(nQ) >= 0 || normalize(a.tag).indexOf(nQ) >= 0;
     }).slice(0, 8);
     if (matches.length === 0) {
-      searchResults.innerHTML = '<div class="search-empty">مفيش نتائج تطابق بحثك.</div>';
+      searchResults.innerHTML = '<div class="search-empty">' + I18N.searchNoResults + '</div>';
       return;
     }
     searchResults.innerHTML = matches.map(function(a){
-      var base = window.SITE_BASE || "";
-      return '<a class="search-result" href="' + base + 'articles/' + a.slug + '">' +
+      // Use absolute URL based on language
+      var href = lang === 'en' ? '/en/articles/' + a.slug : '/articles/' + a.slug;
+      return '<a class="search-result" href="' + href + '">' +
         '<span class="sr-tag">' + escapeHtml(a.tag) + '</span>' +
         '<span class="sr-title">' + highlight(a.title, q) + '</span>' +
         '<span class="sr-excerpt">' + highlight(a.excerpt, q) + '</span>' +
@@ -1345,7 +1825,7 @@ function buildAppJs() {
     bookmarkBtn.setAttribute("aria-pressed", saved ? "true" : "false");
     bookmarkBtn.classList.toggle("active", saved);
     var label = bookmarkBtn.querySelector(".rc-label");
-    if (label) label.textContent = saved ? "محفوظ" : "حفظ";
+    if (label) label.textContent = saved ? I18N.bookmarked : I18N.bookmark;
   }
   if (bookmarkBtn) {
     syncBookmarkBtn();
@@ -1380,12 +1860,13 @@ function buildAppJs() {
     }
     bmSection.removeAttribute("hidden");
     bmGrid.innerHTML = arr.map(function(b){
-      return '<a class="card bookmark-card" href="articles/' + b.slug + '">' +
+      var bookmarkBase = LANG === 'en' ? '/en/articles/' : 'articles/';
+      return '<a class="card bookmark-card" href="' + bookmarkBase + b.slug + '">' +
         '<div class="card-top"><span class="card-icon" aria-hidden="true">' + (b.icon || "📝") + '</span>' +
-        '<button class="bm-remove" type="button" data-slug="' + b.slug + '" aria-label="إزالة من المحفوظات" onclick="event.stopPropagation();event.preventDefault();">×</button></div>' +
+        '<button class="bm-remove" type="button" data-slug="' + b.slug + '" aria-label="' + I18N.clearAll + '" onclick="event.stopPropagation();event.preventDefault();">×</button></div>' +
         '<h3>' + escapeHtml(b.title) + '</h3>' +
         '<p>' + escapeHtml(b.excerpt || "") + '</p>' +
-        '<div class="card-meta"><span class="time">محفوظ</span><span class="read">اقرأ المقال <span class="arr" aria-hidden="true">←</span></span></div>' +
+        '<div class="card-meta"><span class="time">' + I18N.saved + '</span><span class="read">' + I18N.readArticle + ' <span class="arr" aria-hidden="true">←</span></span></div>' +
       '</a>';
     }).join("");
     bmGrid.querySelectorAll(".bm-remove").forEach(function(btn){
@@ -1400,7 +1881,7 @@ function buildAppJs() {
   }
   renderBookmarks();
   if (bmClear) bmClear.addEventListener("click", function(){
-    if (confirm("تمسح كل المحفوظات؟")) {
+    if (confirm(I18N.clearAllConfirm)) {
       setBookmarks([]);
       renderBookmarks();
       syncBookmarkBtn();
@@ -1419,7 +1900,7 @@ function buildAppJs() {
       var full = header + text + "\\n\\n" + "═".repeat(50) + "\\n" + "المصدر: https://kalaam-site.vercel.app/articles/" + (window.__ARTICLE_SLUG || "");
       var label = copyTextBtn.querySelector(".rc-label");
       function done(){
-        if (label) { var o = label.textContent; label.textContent = "اتنسخ ✓"; setTimeout(function(){ label.textContent = o; }, 1500); }
+        if (label) { var o = label.textContent; label.textContent = I18N.copyTextDone; setTimeout(function(){ label.textContent = o; }, 1500); }
         copyTextBtn.classList.add("copied");
         setTimeout(function(){ copyTextBtn.classList.remove("copied"); }, 1500);
       }
@@ -1475,10 +1956,10 @@ function buildAppJs() {
       var feedback = parent.querySelector(".ex-feedback");
       if (feedback) {
         if (correct) {
-          feedback.textContent = "✓ إجابة صحيحة! أحسنت.";
+          feedback.textContent = I18N.answerCorrect;
           feedback.className = "ex-feedback correct";
         } else {
-          feedback.textContent = "✗ مش صحيحة — شوف الإجابة الصحيحة باللون الأخضر.";
+          feedback.textContent = I18N.answerWrong;
           feedback.className = "ex-feedback wrong";
         }
       }
@@ -1579,11 +2060,11 @@ function buildAppJs() {
     var min = Math.floor(sec / 60);
     var hr = Math.floor(min / 60);
     var day = Math.floor(hr / 24);
-    if (sec < 60) return 'الآن';
-    if (min < 60) return 'منذ ' + toArabicNum(min) + ' دقيقة';
-    if (hr < 24) return 'منذ ' + toArabicNum(hr) + ' ساعة';
-    if (day < 30) return 'منذ ' + toArabicNum(day) + ' يوم';
-    return new Date(ts).toLocaleDateString('ar-EG');
+    if (sec < 60) return I18N.now;
+    if (min < 60) return I18N.minutesAgo.replace('{n}', toArabicNum(min));
+    if (hr < 24) return I18N.hoursAgo.replace('{n}', toArabicNum(hr));
+    if (day < 30) return I18N.daysAgo.replace('{n}', toArabicNum(day));
+    return new Date(ts).toLocaleDateString(LANG === 'en' ? 'en-US' : 'ar-EG');
   }
 
   function escapeHtml(s){
@@ -1604,7 +2085,7 @@ function buildAppJs() {
     if (isLiked) {
       likeBtn.classList.add('is-liked');
       likeBtn.setAttribute('aria-pressed', 'true');
-      likeBtn.querySelector('.like-label').textContent = 'أعجبك';
+      likeBtn.querySelector('.like-label').textContent = I18N.liked;
     }
 
     // Fetch initial count
@@ -1620,10 +2101,10 @@ function buildAppJs() {
     function updateLikeCount(count){
       if (!likeCount) return;
       if (count === 0) {
-        likeCount.textContent = likeCount.getAttribute('data-zero') || 'لا إعجابات بعد';
+        likeCount.textContent = likeCount.getAttribute('data-zero') || I18N.noLikes;
         likeCount.classList.remove('has-likes');
       } else {
-        likeCount.textContent = toArabicNum(count) + ' إعجاب';
+        likeCount.textContent = toArabicNum(count) + ' ' + (I18N.likesCount || 'إعجاب');
         likeCount.classList.add('has-likes');
       }
     }
@@ -1652,27 +2133,27 @@ function buildAppJs() {
           if (d.ok && d.liked) {
             likeBtn.classList.add('is-liked');
             likeBtn.setAttribute('aria-pressed', 'true');
-            likeBtn.querySelector('.like-label').textContent = 'أعجبك';
+            likeBtn.querySelector('.like-label').textContent = I18N.liked;
             if (likedSlugs.indexOf(slug) === -1) { likedSlugs.push(slug); setLikedSlugs(likedSlugs); }
-            showMsg('شكرًا لإعجابك', 'success');
+            showMsg(I18N.thanksForLike, 'success');
           } else if (d.ok && d.liked === false) {
             likeBtn.classList.remove('is-liked');
             likeBtn.setAttribute('aria-pressed', 'false');
-            likeBtn.querySelector('.like-label').textContent = 'أعجبني';
+            likeBtn.querySelector('.like-label').textContent = I18N.like;
             var i = likedSlugs.indexOf(slug);
             if (i !== -1) { likedSlugs.splice(i, 1); setLikedSlugs(likedSlugs); }
           } else if (d.alreadyLiked) {
             likeBtn.classList.add('is-liked');
             likeBtn.setAttribute('aria-pressed', 'true');
-            likeBtn.querySelector('.like-label').textContent = 'أعجبك';
-            showMsg(d.message || 'تم تسجيل إعجابك قبل كده', 'success');
+            likeBtn.querySelector('.like-label').textContent = I18N.liked;
+            showMsg(d.message || I18N.alreadyLiked, 'success');
           } else if (d.rateLimited) {
-            showMsg(d.message || 'وصلت للحد الأقصى', 'error');
+            showMsg(d.message || I18N.rateLimited, 'error');
           }
         })
         .catch(function(){
           likeBtn.classList.remove('loading');
-          showMsg('فيه مشكلة، حاول تاني', 'error');
+          showMsg(I18N.likeError, 'error');
         });
     });
   }
@@ -1691,7 +2172,7 @@ function buildAppJs() {
       var initial = (c.name || 'ز').charAt(0);
       div.innerHTML =
         '<div class="comment-top">' +
-          '<span class="comment-author"><span class="comment-avatar">' + escapeHtml(initial) + '</span>' + escapeHtml(c.name || 'زائر') + '</span>' +
+          '<span class="comment-author"><span class="comment-avatar">' + escapeHtml(initial) + '</span>' + escapeHtml(c.name || I18N.guest) + '</span>' +
           '<span class="comment-time">' + escapeHtml(fmtTimeAgo(c.ts)) + '</span>' +
         '</div>' +
         '<div class="comment-text">' + escapeHtml(c.text) + '</div>';
@@ -1701,7 +2182,7 @@ function buildAppJs() {
     function renderEmpty(){
       var div = document.createElement('div');
       div.className = 'comment-empty';
-      div.textContent = 'لسه مفيش تعليقات — كن أول واحد يكتب';
+      div.textContent = I18N.noComments;
       return div;
     }
 
@@ -1738,7 +2219,7 @@ function buildAppJs() {
       var hp = hpInput ? hpInput.value : '';
       if (!text.trim()) return;
       submitBtn.disabled = true;
-      submitBtn.textContent = 'جاري النشر…';
+      submitBtn.textContent = I18N.publishing;
       fetch(ENGAGEMENT_API_BASE + '/comment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1747,7 +2228,7 @@ function buildAppJs() {
         .then(function(r){ return r.json(); })
         .then(function(d){
           submitBtn.disabled = false;
-          submitBtn.textContent = 'نشر التعليق';
+          submitBtn.textContent = I18N.publishComment;
           if (d.error) { alert(d.error); return; }
           if (d.ok && d.fake) {
             // Honeypot triggered — silently "succeed" without actually adding
@@ -1765,8 +2246,8 @@ function buildAppJs() {
         })
         .catch(function(){
           submitBtn.disabled = false;
-          submitBtn.textContent = 'نشر التعليق';
-          alert('فيه مشكلة، حاول تاني');
+          submitBtn.textContent = I18N.publishComment;
+          alert(I18N.commentError);
         });
     });
   }
@@ -1824,23 +2305,34 @@ async function main() {
     const icon  = props['الأيقونة']?.rich_text?.[0]?.plain_text || '📝';
     const level = props['المستوى']?.select?.name || '';
     const series = (props['السلسلة']?.rich_text || []).map(r => r.plain_text).join('').trim() || '';
-    // Note: Notion property is named "الترتيب في السلسلة" (with definite article)
     const seriesOrder = props['الترتيب في السلسلة']?.number ?? null;
+    // New: English title + excerpt
+    const titleEn = (props['العنوان EN']?.rich_text || []).map(r => r.plain_text).join('').trim() || '';
+    const excerptEn = (props['المقتطف EN']?.rich_text || []).map(r => r.plain_text).join('').trim() || '';
 
-    console.log(`  📄 ${title}  [level=${level || '-'}, series=${series || '-'}, order=${seriesOrder ?? '-'}]`);
+    console.log(`  📄 ${title}  [level=${level || '-'}, series=${series || '-'}, order=${seriesOrder ?? '-'}, en=${titleEn ? '✓' : '-'}]`);
     const data = await getArticleData(page.id);
-    // Reading time should only count the MAIN article body, not exercises
     const readingTimeVal = readingTime(data.mainHtml);
+    const readingTimeEnVal = data.englishHtml ? readingTime(data.englishHtml) : readingTimeVal;
+
+    // Article is "translated" only if: published=true + EN title not empty + English Version toggle exists
+    const translated = !!(titleEn && data.hasEnglish);
 
     articles.push({
       title, slug, tag, excerpt, icon,
       level, series, seriesOrder,
+      titleEn, excerptEn,
       mainHtml: data.mainHtml,
       voweledHtml: data.voweledHtml,
       exercisesHtml: data.exercisesHtml,
       exercises: data.exercises,
       plainText: data.plainText,
+      englishHtml: data.englishHtml,
+      englishPlainText: data.englishPlainText,
+      hasEnglish: data.hasEnglish,
+      translated,
       readingTime: readingTimeVal,
+      readingTimeEn: readingTimeEnVal,
       pageId: page.id,
       categorySlug: slugifyArabicTag(tag),
       createdTime: page.created_time,
@@ -1858,16 +2350,18 @@ async function main() {
   }
   const categories = [...categoriesMap.values()];
 
-  // Create output dirs
+  // Create output dirs (Arabic at root + English at /en/)
   fs.mkdirSync('site/articles', { recursive: true });
   fs.mkdirSync('site/category', { recursive: true });
   fs.mkdirSync('site/css', { recursive: true });
   fs.mkdirSync('site/js', { recursive: true });
   fs.mkdirSync('site/fonts', { recursive: true });
   fs.mkdirSync('site/og', { recursive: true });
+  fs.mkdirSync('site/en', { recursive: true });
+  fs.mkdirSync('site/en/articles', { recursive: true });
+  fs.mkdirSync('site/en/category', { recursive: true });
 
   // Copy static assets
-  fs.copyFileSync(path.join(__dirname, 'src', 'style.css'), 'site/css/style.css');
   fs.writeFileSync('site/css/style.css', minifyCss(CSS_SOURCE), 'utf8');
   console.log('✅ css/style.css (minified)');
 
@@ -1882,25 +2376,33 @@ async function main() {
     console.log(`✅ fonts/ (${fs.readdirSync('site/fonts').length} files)`);
   }
 
-  // app.js (minified)
+  // app.js (minified, language-agnostic — uses window.SITE_LANG at runtime)
   fs.writeFileSync('site/js/app.js', minifyJs(buildAppJs()), 'utf8');
   console.log('✅ js/app.js (minified)');
 
-  // search-index.json
-  fs.writeFileSync('site/search-index.json', buildSearchIndex(articles), 'utf8');
-  console.log('✅ search-index.json');
+  // search-index.json (Arabic — all articles)
+  fs.writeFileSync('site/search-index.json', buildSearchIndex(articles, 'ar'), 'utf8');
+  console.log('✅ search-index.json (Arabic)');
 
-  // sitemap.xml
+  // English search-index.json (only translated articles)
+  fs.writeFileSync('site/en/search-index.json', buildSearchIndex(articles, 'en'), 'utf8');
+  console.log('✅ en/search-index.json (English)');
+
+  // sitemap.xml (includes both AR + EN URLs with hreflang alternates)
   fs.writeFileSync('site/sitemap.xml', buildSitemap(articles, categories), 'utf8');
-  console.log('✅ sitemap.xml');
+  console.log('✅ sitemap.xml (bilingual)');
 
   // robots.txt
   fs.writeFileSync('site/robots.txt', buildRobots(), 'utf8');
   console.log('✅ robots.txt');
 
-  // feed.xml
-  fs.writeFileSync('site/feed.xml', buildRss(articles), 'utf8');
-  console.log('✅ feed.xml');
+  // feed.xml (Arabic RSS)
+  fs.writeFileSync('site/feed.xml', buildRss(articles, 'ar'), 'utf8');
+  console.log('✅ feed.xml (Arabic)');
+
+  // en/rss.xml (English RSS — only translated articles)
+  fs.writeFileSync('site/en/rss.xml', buildRss(articles, 'en'), 'utf8');
+  console.log('✅ en/rss.xml (English)');
 
   // OG images (SVG per article + default). og:image URLs in shell() use .svg directly.
   fs.writeFileSync('site/og-default.svg', buildOgSvg({ title: 'مقالات في الوعي والقيم', subtitle: 'كلام له لازمه' }), 'utf8');
@@ -1909,39 +2411,57 @@ async function main() {
   }
   console.log(`✅ og/ (${articles.length + 1} SVG images)`);
 
-  // 404 page
-  fs.writeFileSync('site/404.html', minifyHtml(build404()), 'utf8');
-  console.log('✅ 404.html');
+  // 404 pages (AR + EN)
+  fs.writeFileSync('site/404.html', minifyHtml(build404('ar')), 'utf8');
+  fs.writeFileSync('site/en/404.html', minifyHtml(build404('en')), 'utf8');
+  console.log('✅ 404.html + en/404.html');
 
-  // About page
-  fs.writeFileSync('site/about.html', minifyHtml(buildAbout()), 'utf8');
-  console.log('✅ about.html');
+  // About pages (AR + EN)
+  fs.writeFileSync('site/about.html', minifyHtml(buildAbout('ar')), 'utf8');
+  fs.writeFileSync('site/en/about.html', minifyHtml(buildAbout('en')), 'utf8');
+  console.log('✅ about.html + en/about.html');
 
-  // /start page (entry guide for new visitors)
-  fs.writeFileSync('site/start.html', minifyHtml(buildStart(articles)), 'utf8');
-  console.log('✅ start.html');
+  // /start pages (AR + EN)
+  fs.writeFileSync('site/start.html', minifyHtml(buildStart(articles, 'ar')), 'utf8');
+  fs.writeFileSync('site/en/start.html', minifyHtml(buildStart(articles, 'en')), 'utf8');
+  console.log('✅ start.html + en/start.html');
 
-  // /admin page (protected — admin token required for actual data)
+  // /admin page (Arabic-only — backend moderation tool)
   fs.writeFileSync('site/admin.html', minifyHtml(buildAdmin()), 'utf8');
-  console.log('✅ admin.html');
+  console.log('✅ admin.html (Arabic-only)');
 
-  // Index
-  fs.writeFileSync('site/index.html', minifyHtml(buildIndex(articles)), 'utf8');
-  console.log('✅ index.html');
+  // Index pages (AR + EN)
+  fs.writeFileSync('site/index.html', minifyHtml(buildIndex(articles, 'ar')), 'utf8');
+  fs.writeFileSync('site/en/index.html', minifyHtml(buildIndex(articles, 'en')), 'utf8');
+  console.log('✅ index.html + en/index.html');
 
-  // Articles
+  // Article pages (AR for all + EN only for translated)
+  let enArticleCount = 0;
   for (const a of articles) {
-    fs.writeFileSync(`site/articles/${a.slug}.html`, minifyHtml(buildArticle(a, articles)), 'utf8');
-    console.log(`✅ articles/${a.slug}.html`);
+    fs.writeFileSync(`site/articles/${a.slug}.html`, minifyHtml(buildArticle(a, articles, 'ar')), 'utf8');
+    if (a.translated) {
+      fs.writeFileSync(`site/en/articles/${a.slug}.html`, minifyHtml(buildArticle(a, articles, 'en')), 'utf8');
+      enArticleCount++;
+    }
   }
+  console.log(`✅ articles/ (${articles.length} Arabic) + en/articles/ (${enArticleCount} English)`);
 
-  // Category pages
+  // Category pages (AR for all categories + EN only for categories with translated articles)
+  let enCategoryCount = 0;
   for (const c of categories) {
-    fs.writeFileSync(`site/category/${c.slug}.html`, minifyHtml(buildCategoryPage(c.name, c.slug, c.articles, 1)), 'utf8');
-    console.log(`✅ category/${c.slug}.html`);
+    fs.writeFileSync(`site/category/${c.slug}.html`, minifyHtml(buildCategoryPage(c.name, c.slug, c.articles, 1, 'ar')), 'utf8');
+    const translatedArticles = c.articles.filter(a => a.translated);
+    if (translatedArticles.length > 0) {
+      // For EN category page, use English category name + only translated articles
+      const enCatName = localizeTag('en', c.name);
+      fs.writeFileSync(`site/en/category/${c.slug}.html`, minifyHtml(buildCategoryPage(enCatName, c.slug, translatedArticles, 2, 'en')), 'utf8');
+      enCategoryCount++;
+    }
   }
+  console.log(`✅ category/ (${categories.length} Arabic) + en/category/ (${enCategoryCount} English)`);
 
-  console.log(`\n🎉 تم البناء! ${articles.length} مقالات، ${categories.length} تصنيفات.`);
+  const translatedCount = articles.filter(a => a.translated).length;
+  console.log(`\n🎉 تم البناء! ${articles.length} مقالات (${translatedCount} مترجمة للإنجليزية)، ${categories.length} تصنيفات.`);
 }
 
 main().catch(e => { console.error(e); process.exit(1); });

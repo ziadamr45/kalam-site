@@ -94,6 +94,32 @@
 }
 
 /* ============================================================
+   Self-hosted Latin fonts (Inter for UI, Source Serif 4 for article body)
+   Used only on /en pages via [lang="en"] overrides below.
+   Variable fonts — one file per subset covers all weights.
+   ============================================================ */
+@font-face{
+  font-family:"Inter";font-style:normal;font-weight:100 900;font-display:swap;
+  src:url("/fonts/inter-la.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Inter";font-style:normal;font-weight:100 900;font-display:swap;
+  src:url("/fonts/inter-la-ext.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+@font-face{
+  font-family:"Source Serif 4";font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("/fonts/source-serif-4-la.woff2") format("woff2");
+  unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD;
+}
+@font-face{
+  font-family:"Source Serif 4";font-style:normal;font-weight:200 900;font-display:swap;
+  src:url("/fonts/source-serif-4-la-ext.woff2") format("woff2");
+  unicode-range:U+0100-02BA,U+02BD-02C5,U+02C7-02CC,U+02CE-02D7,U+02DD-02FF,U+0304,U+0308,U+0329,U+1D00-1DBF,U+1E00-1E9F,U+1EF2-1EFF,U+2020,U+20A0-20AB,U+20AD-20C0,U+2113,U+2C60-2C7F,U+A720-A7FF;
+}
+
+/* ============================================================
    Theme tokens (light = default)
    Dark mode is wired via [data-theme="dark"] on <html>.
    ============================================================ */
@@ -110,12 +136,19 @@
   --gold:#9A6B1F;
   --gold-soft:#FBF4E4;
   --radius:12px;
-  /* Tahoma/Arial fallbacks render Arabic fine before woff2 loads → no FOUT breakage */
+  /* Arabic fonts (default) — Tahoma/Arial fallbacks render Arabic fine before woff2 loads */
   --font-display:"Amiri","Tahoma","Noto Naskh Arabic","Times New Roman",serif;
   --font-body:"Tajawal","Tahoma","Noto Sans Arabic",-apple-system,"Segoe UI",sans-serif;
-  /* shadow tokens (used by cards, kept consistent in dark) */
+  /* English fonts — used when [lang="en"] is set on <html> */
+  --font-display-en:"Source Serif 4","Georgia","Times New Roman",serif;
+  --font-body-en:"Inter",-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
   --shadow-card-hover:0 1px 2px rgba(0,0,0,.05),0 12px 28px rgba(38,35,31,.08);
   --header-bg:rgba(250,249,246,.86);
+}
+/* English pages swap font stacks via [lang="en"] on <html> */
+html[lang="en"]{
+  --font-display:"Source Serif 4","Georgia","Times New Roman",serif;
+  --font-body:"Inter",-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
 }
 
 /* ---------- Dark mode (warm dark — not pure black) ---------- */
@@ -162,7 +195,7 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
 
 /* ---------- progress bar ---------- */
-#progress{position:fixed;top:0;right:0;height:3px;width:0;background:linear-gradient(90deg,var(--gold),var(--accent));z-index:60;transition:width .1s linear}
+#progress{position:fixed;top:0;inset-inline-start:0;height:3px;width:0;background:linear-gradient(90deg,var(--gold),var(--accent));z-index:60;transition:width .1s linear}
 
 /* ---------- header ---------- */
 .site-header{
@@ -246,11 +279,11 @@ a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-off
 .article-body p{margin:0 0 22px}
 .article-body h2{
   font-family:var(--font-display);font-size:29px;font-weight:700;line-height:1.55;
-  margin:44px 0 18px;padding-right:18px;position:relative;
+  margin:44px 0 18px;padding-inline-start:18px;position:relative;
 }
-.article-body h2::before{content:"";position:absolute;right:0;top:10px;bottom:10px;width:4px;border-radius:4px;background:linear-gradient(180deg,var(--gold),var(--accent))}
+.article-body h2::before{content:"";position:absolute;inset-inline-start:0;top:10px;bottom:10px;width:4px;border-radius:4px;background:linear-gradient(180deg,var(--gold),var(--accent))}
 .article-body strong{font-weight:800}
-.article-body ol,.article-body ul{margin:0 0 22px;padding-right:26px}
+.article-body ol,.article-body ul{margin:0 0 22px;padding-inline-start:26px}
 .article-body li{margin-bottom:12px}
 .article-body li::marker{color:var(--accent);font-weight:800}
 .verse{font-family:var(--font-display);font-weight:700;color:var(--gold);font-size:1.12em}
@@ -395,17 +428,17 @@ a.card-tag:hover{background:var(--accent);color:#fff}
 .toc-list{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px}
 .toc-list a{
   color:var(--ink);font-size:15px;font-weight:500;line-height:1.6;
-  padding:4px 0;border-right:3px solid transparent;padding-right:10px;
+  padding:4px 0;border-inline-start:3px solid transparent;padding-inline-start:10px;
   transition:border-color .15s,color .15s;
 }
-.toc-list a:hover{color:var(--accent-ink);border-right-color:var(--accent)}
+.toc-list a:hover{color:var(--accent-ink);border-inline-start-color:var(--accent)}
 
 /* ---------- Share bar ---------- */
 .share-bar{
   margin:44px 0 0;padding:24px 0 0;border-top:1px solid var(--line);
   display:flex;flex-wrap:wrap;align-items:center;gap:10px;
 }
-.share-label{font-size:14px;font-weight:800;color:var(--muted);margin-left:4px}
+.share-label{font-size:14px;font-weight:800;color:var(--muted);margin-inline-end:4px}
 .share-btn{
   width:42px;height:42px;border-radius:999px;border:1px solid var(--line);
   background:var(--surface);color:var(--ink);cursor:pointer;
@@ -455,7 +488,8 @@ a.card-tag:hover{background:var(--accent);color:#fff}
   background:var(--accent-soft);padding:4px 12px;border-radius:999px;
 }
 .pn-card-arrow{font-size:20px;font-weight:800;color:var(--accent);line-height:1}
-.pn-card.pn-next{text-align:left;align-items:flex-end}
+.pn-card.pn-prev{text-align:start}
+.pn-card.pn-next{text-align:end;align-items:flex-end}
 .pn-card.pn-next .pn-card-meta{flex-direction:row-reverse}
 .pn-card.is-only{grid-column:1 / -1}
 @media (max-width:640px){
@@ -466,8 +500,8 @@ a.card-tag:hover{background:var(--accent);color:#fff}
 /* ---------- About page ---------- */
 .about-shell{max-width:740px;margin:0 auto;padding:48px 24px 80px}
 .about-shell h1{font-family:var(--font-display);font-size:clamp(32px,5vw,44px);font-weight:700;line-height:1.4;margin:24px 0 18px}
-.about-shell h2{font-family:var(--font-display);font-size:26px;font-weight:700;margin:36px 0 14px;padding-right:14px;position:relative}
-.about-shell h2::before{content:"";position:absolute;right:0;top:8px;bottom:8px;width:4px;border-radius:4px;background:linear-gradient(180deg,var(--gold),var(--accent))}
+.about-shell h2{font-family:var(--font-display);font-size:26px;font-weight:700;margin:36px 0 14px;padding-inline-start:14px;position:relative}
+.about-shell h2::before{content:"";position:absolute;inset-inline-start:0;top:8px;bottom:8px;width:4px;border-radius:4px;background:linear-gradient(180deg,var(--gold),var(--accent))}
 .about-shell p{font-size:17.5px;line-height:2;margin:0 0 18px;color:var(--ink)}
 .about-shell .lead{font-size:19px;color:var(--muted);margin-bottom:28px}
 
@@ -512,7 +546,7 @@ a:focus-visible,button:focus-visible,.search-input:focus-visible{
 
 /* ---------- Skip-to-content link ---------- */
 .skip-link{
-  position:absolute;top:-40px;right:8px;z-index:200;
+  position:absolute;top:-40px;inset-inline-start:8px;z-index:200;
   background:var(--accent);color:#fff;padding:8px 14px;border-radius:6px;
   font-weight:700;font-size:13px;transition:top .15s;
 }
@@ -593,7 +627,7 @@ a:focus-visible,button:focus-visible,.search-input:focus-visible{
   transition:all .15s;
 }
 .sn-link:hover{border-color:var(--accent);background:var(--accent-soft)}
-.sn-link.sn-next{align-items:flex-end;text-align:left}
+.sn-link.sn-prev{align-items:flex-start;text-align:start}.sn-link.sn-next{align-items:flex-end;text-align:end}
 .sn-arrow{color:var(--accent);font-weight:800;font-size:14px}
 .sn-meta{font-size:11.5px;color:var(--muted);font-weight:700}
 .sn-title{font-size:14px;font-weight:700;color:var(--ink);line-height:1.5;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
@@ -721,7 +755,7 @@ kbd{
 .bm-clear:hover{border-color:var(--accent);color:var(--accent-ink)}
 .bookmark-card{position:relative}
 .bm-remove{
-  position:absolute;top:-6px;left:-6px;z-index:5;
+  position:absolute;top:-6px;inset-inline-end:-6px;z-index:5;
   width:22px;height:22px;border-radius:50%;
   background:var(--accent);color:#fff;border:2px solid var(--surface);
   font-size:14px;line-height:1;font-weight:800;cursor:pointer;
@@ -953,3 +987,139 @@ kbd{
 .admin-delete-btn:hover{background:#A83232;color:#fff}
 .admin-empty{text-align:center;padding:48px 20px;color:var(--muted);font-size:14px}
 
+
+/* ============================================================
+   Bilingual support: English typography, language switcher,
+   English verse/hadith blockquotes (LTR), hreflang, etc.
+   ============================================================ */
+
+/* English pages use Inter (body) + Source Serif 4 (display) — vars already swapped
+   via html[lang="en"] above. These rules tune typography for Latin text. */
+html[lang="en"] body{font-size:17px;line-height:1.78;letter-spacing:-.002em}
+html[lang="en"] .article-body{font-size:18.5px;line-height:1.85}
+html[lang="en"] .article-body p{margin:0 0 22px}
+html[lang="en"] .article-body h2{font-size:32px;line-height:1.4;margin:48px 0 18px}
+html[lang="en"] .article-head h1{line-height:1.25;letter-spacing:-.015em}
+html[lang="en"] .card h3{font-size:22px;line-height:1.4;letter-spacing:-.01em}
+html[lang="en"] .hero h1{letter-spacing:-.02em}
+html[lang="en"] .brand-name{font-size:20px;letter-spacing:-.01em}
+html[lang="en"] .brand-sub{letter-spacing:0}
+html[lang="en"] .section-head h2{font-size:30px;letter-spacing:-.015em}
+html[lang="en"] .more h2{font-size:24px}
+html[lang="en"] .comments-head{font-size:22px;letter-spacing:-.01em}
+html[lang="en"] .like-btn{letter-spacing:-.005em}
+html[lang="en"] .article-body strong{font-weight:700}
+html[lang="en"] .article-body em{font-style:italic}
+html[lang="en"] .card-tag{letter-spacing:.01em}
+html[lang="en"] .level-badge{letter-spacing:.02em}
+
+/* English article head: "Written by Ziad Amr • 5 min read" */
+html[lang="en"] .article-head .meta .who{font-weight:700}
+
+/* English body shouldn't apply the Arabic letter-spacing tweaks */
+html[lang="en"] .toc-list a{letter-spacing:0}
+html[lang="en"] .share-label{letter-spacing:0}
+html[lang="en"] .rc-btn{letter-spacing:0}
+
+/* ---------- Language switcher button (in header) ---------- */
+.lang-switch{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 14px;border-radius:999px;
+  border:1px solid var(--line);background:var(--surface);color:var(--accent-ink);
+  font-family:var(--font-body);font-size:13px;font-weight:700;
+  text-decoration:none;cursor:pointer;
+  transition:border-color .15s,background .15s,color .15s;
+  line-height:1;white-space:nowrap;
+}
+.lang-switch:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+.lang-switch:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+.lang-switch .lang-globe{
+  width:15px;height:15px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+}
+.lang-switch .lang-globe svg{width:15px;height:15px;display:block}
+@media (max-width:640px){
+  .lang-switch{padding:8px 11px;font-size:12px}
+  .lang-switch .lang-text-long{display:none}
+  .lang-switch .lang-text-short{display:inline}
+}
+@media (min-width:641px){
+  .lang-switch .lang-text-short{display:none}
+  .lang-switch .lang-text-long{display:inline}
+}
+
+/* ---------- English verse / hadith blockquotes (LTR) ---------- */
+/* Render quoted Quran verses and hadiths in English articles as distinct
+   blockquotes — visually similar to Arabic .verse / .hadith but block-level
+   and LTR. */
+.article-body blockquote.verse-en,
+.article-body blockquote.hadith-en{
+  margin:26px 0;
+  padding:18px 22px;
+  border-radius:var(--radius);
+  font-family:var(--font-display);
+  font-size:1.08em;
+  line-height:1.75;
+  position:relative;
+  border-inline-start:4px solid;
+  quotes:none;
+}
+.article-body blockquote.verse-en{
+  background:var(--gold-soft);
+  border-inline-start-color:var(--gold);
+  color:var(--gold);
+}
+.article-body blockquote.hadith-en{
+  background:var(--accent-soft);
+  border-inline-start-color:var(--accent);
+  color:var(--accent-ink);
+}
+.article-body blockquote.verse-en p,
+.article-body blockquote.hadith-en p{margin:0}
+.article-body blockquote.verse-en cite,
+.article-body blockquote.hadith-en cite{
+  display:block;
+  font-style:normal;
+  font-family:var(--font-body);
+  font-size:.78em;
+  font-weight:700;
+  opacity:.7;
+  margin-top:8px;
+  letter-spacing:.02em;
+}
+:root[data-theme="dark"] .article-body blockquote.verse-en{background:var(--gold-soft);color:var(--gold)}
+:root[data-theme="dark"] .article-body blockquote.hadith-en{background:var(--accent-soft);color:var(--accent-ink)}
+
+/* ---------- Hreflang alternate link tags (no visual) ---------- */
+link[rel="alternate"][hreflang]{display:none}
+
+/* ---------- English author card: "Written by Ziad Amr" ---------- */
+html[lang="en"] .author-info .lbl{font-size:11.5px;letter-spacing:.05em;text-transform:uppercase}
+html[lang="en"] .author-info .name{font-size:21px}
+
+/* ---------- English category page tweaks ---------- */
+html[lang="en"] .hero h1{font-family:var(--font-display);font-weight:700}
+
+/* ---------- English footer ---------- */
+html[lang="en"] .site-footer .f-brand{font-family:var(--font-display);letter-spacing:-.01em}
+
+/* ---------- English start page ---------- */
+html[lang="en"] .start-hero h1{letter-spacing:-.02em}
+html[lang="en"] .start-section h2{letter-spacing:-.01em}
+html[lang="en"] .start-num{font-family:var(--font-display)}
+
+/* ---------- English 404 ---------- */
+html[lang="en"] .not-found .nf-code{letter-spacing:-.02em}
+
+/* ---------- English admin ---------- */
+html[lang="en"] .admin-login h1{letter-spacing:-.01em}
+
+/* ---------- English search ---------- */
+html[lang="en"] .search-input{font-size:16px}
+html[lang="en"] .search-result .sr-title{font-family:var(--font-display);letter-spacing:-.005em}
+
+/* ---------- LTR-aware progress bar gradient direction ---------- */
+html[lang="en"] #progress{background:linear-gradient(90deg,var(--accent),var(--gold))}
+
+/* ---------- LTR-aware hero orn-line gradient ---------- */
+html[lang="en"] .hero .orn-line::before{background:linear-gradient(90deg,var(--gold),transparent)}
+html[lang="en"] .hero .orn-line::after{background:linear-gradient(90deg,transparent,var(--gold))}
