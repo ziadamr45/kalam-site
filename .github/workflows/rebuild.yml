@@ -1,16 +1,18 @@
-name: Vercel Rebuild (daily backup)
+name: Vercel Rebuild (Notion → site)
 
-# Runs once a day at midnight UTC (≈ 02:00 Cairo time).
-# Acts as a daily backup in case Notion content changes weren't picked up
-# by a git push. The primary deploy mechanism is the Vercel Deploy Hook
-# (called automatically when the user pushes to main, since Vercel is now
-# connected to the GitHub repo).
+# Polls Notion for content changes by rebuilding the site every 30 minutes.
+# Notion API does not offer native webhooks for content changes on its database
+# rows; the most reliable "near-real-time" option without a paid third-party
+# automation tier is a fast polling cron. Combined with the manual deploy-hook
+# trigger (created via setup-deploy-hook.yml), this gives both scheduled AND
+# on-demand rebuilds.
+#
 # Can also be triggered manually from the Actions tab.
 
 on:
   schedule:
-    # Daily at 00:00 UTC
-    - cron: '0 0 * * *'
+    # Every 30 minutes
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -25,24 +27,22 @@ jobs:
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
-          echo "⏳ Triggering Vercel production deployment at $(date -u '+%Y-%m-%d %H:%M:%S UTC')..."
-
-          # Pull latest committed files from main branch, hash them by SHA, upload, then deploy.
-          # Vercel will run `npm install && npm run build` on its build machines, which
-          # re-queries Notion for published articles and regenerates site/.
+          START_TS=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+          echo "⏳ Triggering Vercel production deployment at $START_TS..."
 
           # Step 1: fetch the repo tree from GitHub API (recursive)
-          TREE_JSON=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/git/trees/main?recursive=1")
+          TREE_JSON=$(curl -s -H "Authorization: token $GH_TOKEN" \
+            "https://api.github.com/repos/$REPO/git/trees/main?recursive=1")
 
           # Step 2: for each blob, fetch raw content, compute SHA, upload to Vercel
           SHAS_FILE=$(mktemp)
           echo "[" > "$SHAS_FILE"
           FIRST=1
 
-          # Get the list of blob paths (filter out node_modules, site, .git, .env, .github)
           PATHS=$(echo "$TREE_JSON" | python3 -c "
           import sys, json
           d = json.load(sys.stdin)
@@ -51,7 +51,6 @@ jobs:
               if t.get('type') != 'blob':
                   continue
               p = t.get('path', '')
-              # Skip generated / secret / CI files
               if p.startswith('node_modules/') or p.startswith('site/') or p.startswith('.git/'):
                   continue
               if p == '.env' or p == '.env.local':
@@ -63,16 +62,14 @@ jobs:
               print(p)
           ")
 
+          FILE_COUNT=0
           for P in $PATHS; do
-              # Fetch raw content
-              RAW=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-                "https://api.github.com/repos/${{ github.repository }}/contents/$P" \
+              RAW=$(curl -s -H "Authorization: token $GH_TOKEN" \
+                "https://api.github.com/repos/$REPO/contents/$P" \
                 | python3 -c "import sys, json, base64; d=json.load(sys.stdin); sys.stdout.buffer.write(base64.b64decode(d['content']))")
 
-              # Compute sha1
               SHA=$(printf '%s' "$RAW" | sha1sum | awk '{print $1}')
 
-              # Upload to Vercel /v2/files
               RES=$(printf '%s' "$RAW" | curl -s -o /dev/null -w "%{http_code}" \
                 -X POST "https://api.vercel.com/v2/files" \
                 -H "Authorization: Bearer $VERCEL_TOKEN" \
@@ -83,7 +80,6 @@ jobs:
                   echo "  ✗ upload failed for $P (HTTP $RES)"
                   exit 1
               fi
-              echo "  ✓ $P (sha=$SHA)"
 
               if [ $FIRST -eq 1 ]; then
                   FIRST=0
@@ -91,10 +87,12 @@ jobs:
                   echo "," >> "$SHAS_FILE"
               fi
               printf '  {"file":"%s","sha":"%s"}' "$P" "$SHA" >> "$SHAS_FILE"
+              FILE_COUNT=$((FILE_COUNT + 1))
           done
 
           echo "" >> "$SHAS_FILE"
           echo "]" >> "$SHAS_FILE"
+          echo "  ✓ uploaded $FILE_COUNT files"
 
           # Step 3: create production deployment referencing SHAs
           DEPLOY_RESP=$(python3 -c "
@@ -132,20 +130,48 @@ jobs:
           echo "   URL: https://$DEPLOY_URL"
 
           # Step 4: poll for completion (max ~10 min)
+          FINAL_STATE="TIMEOUT"
           for i in $(seq 1 40); do
               sleep 15
               STATE=$(curl -s "https://api.vercel.com/v13/deployments/$DEPLOY_ID" \
                 -H "Authorization: Bearer $VERCEL_TOKEN" \
                 | python3 -c "import sys, json; print(json.load(sys.stdin).get('readyState','?'))")
               echo "  [$i] state=$STATE"
-              if [ "$STATE" = "READY" ]; then
-                  echo "✅ Deployment READY"
-                  exit 0
-              fi
-              if [ "$STATE" = "ERROR" ] || [ "$STATE" = "CANCELED" ]; then
-                  echo "❌ Deployment $STATE"
-                  exit 1
+              if [ "$STATE" = "READY" ] || [ "$STATE" = "ERROR" ] || [ "$STATE" = "CANCELED" ]; then
+                  FINAL_STATE="$STATE"
+                  break
               fi
           done
-          echo "⚠️ Timeout waiting for deployment"
-          exit 1
+
+          END_TS=$(date -u '+%Y-%m-%d %H:%M:%S UTC')
+
+          # Step 5: write GitHub Actions Job Summary (visible at the top of the run page)
+          {
+            echo "## 🚀 Vercel Rebuild Summary"
+            echo ""
+            echo "| Item | Value |"
+            echo "|---|---|"
+            echo "| Triggered at | \`$START_TS\` |"
+            echo "| Finished at  | \`$END_TS\` |"
+            echo "| Files uploaded | \`$FILE_COUNT\` |"
+            echo "| Deployment ID | \`$DEPLOY_ID\` |"
+            echo "| Deployment URL | https://$DEPLOY_URL |"
+            echo "| Production alias | https://kalaam-site.vercel.app |"
+            echo "| Final state | **$FINAL_STATE** |"
+            echo ""
+            if [ "$FINAL_STATE" = "READY" ]; then
+              echo "✅ **SUCCESS** — site rebuilt from latest Notion content."
+              echo ""
+              echo "Live site: https://kalaam-site.vercel.app"
+            else
+              echo "❌ **FAILURE** — final state: $FINAL_STATE"
+              echo ""
+              echo "Check the Vercel deployment logs: https://vercel.com/ziadamr45/kalam-site/deployments/$DEPLOY_ID"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FINAL_STATE" = "READY" ]; then
+              exit 0
+          else
+              exit 1
+          fi

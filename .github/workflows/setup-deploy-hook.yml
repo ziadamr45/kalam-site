@@ -1,17 +1,17 @@
 name: Setup Vercel Deploy Hook
 
 # One-time workflow: creates a Vercel Deploy Hook for the project so it can be
-# triggered externally (e.g. from a Notion webhook, a cron service, or a button
-# in another tool) WITHOUT needing a git push.
+# triggered externally (e.g. from a Notion automation, a cron service, or a
+# button in another tool) WITHOUT needing a git push.
 #
 # Idempotent: if a hook named "manual-trigger" already exists, it will be
 # reused (the existing URL is printed) instead of creating a duplicate.
 #
 # >>> HOW TO RUN <<<
 # 1. Push this file to main (Vercel will auto-build the site).
-# 2. In GitHub: Repo → Actions → "Setup Vercel Deploy Hook" → Run workflow.
-# 3. Open the workflow run logs → find the line:
-#      ✅ DEPLOY_HOOK_URL = https://api.vercel.com/v1/integrations/deploy-hooks/XXXXXXXX
+# 2. In GitHub: Repo → Actions tab → "Setup Vercel Deploy Hook" → Run workflow.
+# 3. The hook URL will appear in the **Job Summary** panel at the TOP of the
+#    run page (no need to dig into logs).
 # 4. Copy that URL. To trigger a rebuild at any time: curl -X POST <URL>
 
 on:
@@ -37,7 +37,6 @@ jobs:
             -H "Authorization: Bearer $VERCEL_TOKEN" \
             "https://api.vercel.com/v1/projects/$VERCEL_PROJECT_ID/deploy-hooks")
 
-          # Extract existing hook named "manual-trigger" if any
           EXISTING=$(echo "$HOOKS_JSON" | python3 -c "
           import sys, json
           try:
@@ -89,13 +88,13 @@ jobs:
 
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
-      - name: Print deploy hook URL
+      - name: Print deploy hook URL to Job Summary
         env:
           LIST_URL: ${{ steps.list.outputs.url }}
           CREATE_URL: ${{ steps.create.outputs.url }}
         run: |
           URL="${LIST_URL}${CREATE_URL}"
-          echo ""
+          echo "" 
           echo "═══════════════════════════════════════════════════════════════════════"
           echo "  ✅ DEPLOY_HOOK_URL = $URL"
           echo "═══════════════════════════════════════════════════════════════════════"
@@ -104,4 +103,33 @@ jobs:
           echo "  curl -X POST '$URL'"
           echo ""
           echo "Or visit it in a browser — it returns a JSON response with the deployment ID."
-          echo ""
+
+          # Job Summary (visible at the top of the run page, no need to dig into logs)
+          {
+            echo "## 🔗 Vercel Deploy Hook"
+            echo ""
+            echo "Your deploy hook URL is:"
+            echo ""
+            echo '```'
+            echo "$URL"
+            echo '```'
+            echo ""
+            echo "**To trigger a rebuild at any time:**"
+            echo ""
+            echo '```bash'
+            echo "curl -X POST '$URL'"
+            echo '```'
+            echo ""
+            echo "Or open the URL in a browser — it returns a JSON response with the deployment ID."
+            echo ""
+            echo "---"
+            echo ""
+            echo "### 🔁 Full cycle (Notion change → site updates in ~2 min)"
+            echo ""
+            echo "1. You edit / publish an article in Notion."
+            echo "2. **Either** wait up to 30 minutes — the \`Vercel Rebuild\` workflow polls Notion every 30 minutes via cron."
+            echo "3. **Or** trigger the rebuild immediately by hitting the hook URL above (e.g. from a Notion automation button, a webhook service like Make.com / Zapier, or just your browser)."
+            echo "4. The \`Vercel Rebuild\` workflow uploads the latest code to Vercel, Vercel runs \`npm install && npm run build\` (which re-queries Notion and regenerates the site), and the new content goes live at https://kalaam-site.vercel.app within ~60-90 seconds."
+            echo ""
+            echo "> ⚠️ **Notion API does not offer native content-change webhooks.** The 30-min cron is the simplest way to get \"near-real-time\" updates without a paid third-party automation tier. To make it truly instant, you can connect Notion → Make.com/Zapier → this hook URL."
+          } >> "$GITHUB_STEP_SUMMARY"

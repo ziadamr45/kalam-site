@@ -491,3 +491,268 @@ a:focus-visible,button:focus-visible,.search-input:focus-visible{
   font-weight:700;font-size:13px;transition:top .15s;
 }
 .skip-link:focus{top:8px;color:#fff}
+
+/* ============================================================
+   Phase 2 upgrade: reading controls, exercises, level badges,
+   series nav, /start page, bookmarks, teacher mode, tashkeel.
+   All scoped to existing palette tokens — no new colors.
+   ============================================================ */
+
+/* ---------- Level badge ---------- */
+.level-badge{
+  display:inline-block;font-size:11.5px;font-weight:800;
+  padding:3px 11px;border-radius:999px;letter-spacing:.2px;
+  border:1px solid transparent;line-height:1.5;
+}
+.level-badge.lvl-beg{color:#0F7B3D;background:#E8F6EE;border-color:#CFEAD9}
+.level-badge.lvl-mid{color:#9A6B1F;background:#FBF4E4;border-color:#F0E2C4}
+.level-badge.lvl-adv{color:#A83232;background:#FBE6E6;border-color:#F3CDCD}
+:root[data-theme="dark"] .level-badge.lvl-beg{color:#7BD9A5;background:#1A3528;border-color:#234A37}
+:root[data-theme="dark"] .level-badge.lvl-mid{color:#D9A547;background:#2E2618;border-color:#3D3220}
+:root[data-theme="dark"] .level-badge.lvl-adv{color:#E58585;background:#3A1F1F;border-color:#4A2828}
+
+.card-tags{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+
+/* ---------- Article head tags row ---------- */
+.article-head-tags{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+
+/* ---------- Reading controls toolbar ---------- */
+.reading-controls{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:12px 16px;margin:18px 0 8px;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius);
+}
+.rc-btn{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:7px 12px;border:1px solid var(--line);border-radius:999px;
+  background:var(--surface);color:var(--ink);font-family:var(--font-body);
+  font-size:13px;font-weight:700;cursor:pointer;
+  transition:all .15s;
+}
+.rc-btn svg{width:15px;height:15px;flex:none}
+.rc-btn:hover{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+.rc-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.rc-btn[aria-pressed="true"],.rc-btn.active{
+  background:var(--accent);border-color:var(--accent);color:#fff;
+}
+.rc-btn[aria-pressed="true"] svg,.rc-btn.active svg{color:#fff}
+.rc-font{display:inline-flex;align-items:center;gap:4px;border-inline-start:1px solid var(--line);padding-inline-start:8px}
+.rc-font-btn{padding:7px 11px;min-width:38px;justify-content:center;font-weight:800;font-family:var(--font-display)}
+.rc-label{font-size:13px}
+@media (max-width:540px){
+  .rc-label{display:none}
+  .reading-controls{gap:6px;padding:10px 12px}
+}
+
+/* ---------- Article body voweled (hidden by default) ---------- */
+.article-body-voweled{display:none}
+.article-body-voweled:not([hidden]){display:block}
+
+/* ---------- Series navigation ---------- */
+.series-nav{
+  background:linear-gradient(135deg,var(--accent-soft),var(--surface-2));
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:18px 20px;margin:18px 0 24px;
+}
+.sn-header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.sn-name{font-family:var(--font-display);font-weight:700;font-size:16px;color:var(--accent-ink)}
+.sn-progress{font-size:12.5px;font-weight:700;color:var(--muted);background:var(--surface);padding:4px 12px;border-radius:999px;border:1px solid var(--line)}
+.sn-progress-bar{height:6px;background:var(--surface);border-radius:999px;overflow:hidden;margin:10px 0 16px;border:1px solid var(--line)}
+.sn-progress-fill{height:100%;background:linear-gradient(90deg,var(--gold),var(--accent));border-radius:999px;transition:width .3s}
+.sn-links{display:flex;gap:12px;flex-wrap:wrap}
+.sn-link{
+  flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;
+  padding:12px 14px;border:1px solid var(--line);border-radius:10px;
+  background:var(--surface);text-decoration:none;color:var(--ink);
+  transition:all .15s;
+}
+.sn-link:hover{border-color:var(--accent);background:var(--accent-soft)}
+.sn-link.sn-next{align-items:flex-end;text-align:left}
+.sn-arrow{color:var(--accent);font-weight:800;font-size:14px}
+.sn-meta{font-size:11.5px;color:var(--muted);font-weight:700}
+.sn-title{font-size:14px;font-weight:700;color:var(--ink);line-height:1.5;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.sn-spacer{flex:1}
+
+/* ---------- Exercises section ---------- */
+.exercises{
+  margin:38px 0 0;padding:26px 24px;border-radius:var(--radius);
+  background:var(--surface);border:1px solid var(--line);
+  box-shadow:0 1px 2px rgba(0,0,0,.03);
+}
+.ex-head{display:flex;align-items:center;gap:10px;padding-bottom:18px;border-bottom:2px solid var(--accent-soft);margin-bottom:20px}
+.ex-head h2{margin:0;font-family:var(--font-display);font-size:26px;color:var(--accent-ink)}
+.ex-icon{font-size:24px}
+.ex-section{margin-bottom:28px}
+.ex-section:last-child{margin-bottom:0}
+.ex-section-title{
+  font-family:var(--font-display);font-size:18px;color:var(--accent);
+  margin:0 0 14px;padding-inline-start:14px;border-inline-start:4px solid var(--gold);
+}
+.ex-question,.ex-i3rab{
+  padding:18px 18px;margin-bottom:14px;background:var(--surface-2);
+  border:1px solid var(--line);border-radius:10px;
+}
+.ex-q-text{font-size:15px;line-height:1.85;color:var(--ink);margin-bottom:14px;font-weight:600}
+.ex-q-num{color:var(--accent);font-weight:800;margin-inline-end:6px}
+.ex-options{display:flex;flex-direction:column;gap:8px}
+.ex-option{
+  display:flex;align-items:center;gap:12px;width:100%;text-align:start;
+  padding:11px 14px;border:1px solid var(--line);border-radius:8px;
+  background:var(--surface);color:var(--ink);
+  font-family:var(--font-body);font-size:14.5px;line-height:1.6;
+  cursor:pointer;transition:all .15s;
+}
+.ex-option:hover:not(:disabled){border-color:var(--accent);background:var(--accent-soft)}
+.ex-option:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ex-option:disabled{cursor:default}
+.ex-option.correct{background:#E8F6EE;border-color:#0F7B3D;color:#0F5A2D}
+.ex-option.wrong{background:#FBE6E6;border-color:#A83232;color:#7A2424}
+:root[data-theme="dark"] .ex-option.correct{background:#1A3528;border-color:#3FA88E;color:#9BE5C2}
+:root[data-theme="dark"] .ex-option.wrong{background:#3A1F1F;border-color:#E58585;color:#F0A9A9}
+.ex-marker{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:50%;flex:none;
+  background:var(--accent-soft);color:var(--accent-ink);
+  font-weight:800;font-size:13px;font-family:var(--font-display);
+}
+.ex-option.correct .ex-marker{background:#0F7B3D;color:#fff}
+.ex-option.wrong .ex-marker{background:#A83232;color:#fff}
+.ex-opt-text{flex:1}
+.ex-feedback{margin-top:10px;font-size:13.5px;font-weight:700;padding:8px 12px;border-radius:6px}
+.ex-feedback.correct{background:#E8F6EE;color:#0F5A2D}
+.ex-feedback.wrong{background:#FBE6E6;color:#7A2424}
+:root[data-theme="dark"] .ex-feedback.correct{background:#1A3528;color:#9BE5C2}
+:root[data-theme="dark"] .ex-feedback.wrong{background:#3A1F1F;color:#F0A9A9}
+.ex-i3rab .ex-reveal{
+  display:inline-flex;align-items:center;gap:6px;
+  padding:8px 16px;border:1px solid var(--accent);border-radius:999px;
+  background:var(--surface);color:var(--accent);font-weight:800;font-size:13px;
+  cursor:pointer;transition:all .15s;font-family:var(--font-body);
+}
+.ex-reveal:hover,.ex-reveal.active{background:var(--accent);color:#fff}
+.ex-answer{
+  margin-top:14px;padding:14px 18px;background:var(--accent-soft);
+  border-inline-start:4px solid var(--accent);border-radius:6px;
+  animation:fadein .25s;
+}
+.ex-answer ul{margin:0;padding-inline-start:20px}
+.ex-answer li{font-size:14px;line-height:1.9;color:var(--ink);margin-bottom:6px}
+.ex-answer li:last-child{margin-bottom:0}
+@keyframes fadein{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:translateY(0)}}
+
+/* ---------- Hero "ابدأ من هنا" link ---------- */
+.hero-start{
+  display:inline-block;margin-top:24px;
+  padding:10px 22px;border-radius:999px;
+  background:var(--accent);color:#fff;
+  font-weight:800;font-size:14px;text-decoration:none;
+  transition:all .15s;
+}
+.hero-start:hover{background:var(--accent-ink);transform:translateY(-1px);box-shadow:0 6px 14px rgba(22,105,86,.2)}
+
+/* ---------- /start page ---------- */
+.start-hero{
+  text-align:center;padding:64px 24px 50px;
+  background:radial-gradient(620px 300px at 50% -80px,var(--accent-soft) 0%,rgba(231,241,237,0) 70%),var(--bg);
+}
+.start-hero h1{font-family:var(--font-display);font-size:clamp(38px,6vw,56px);font-weight:700;color:var(--ink);margin:0}
+.start-wrap{max-width:780px}
+.start-section{
+  display:flex;gap:20px;align-items:flex-start;
+  padding:28px 0;border-bottom:1px solid var(--line);
+}
+.start-section:last-of-type{border-bottom:none}
+.start-num{
+  flex:none;width:48px;height:48px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--accent);color:#fff;
+  font-family:var(--font-display);font-size:22px;font-weight:700;
+}
+.start-section h2{margin:0 0 10px;font-family:var(--font-display);font-size:22px;color:var(--accent-ink)}
+.start-section p{margin:0;color:var(--ink);font-size:16px;line-height:2}
+.start-section strong{color:var(--accent);font-weight:800}
+.start-cta{
+  display:block;text-align:center;margin:32px auto 0;max-width:560px;
+  padding:16px 24px;border-radius:999px;
+  background:var(--accent);color:#fff;font-weight:800;font-size:16px;
+  text-decoration:none;transition:all .15s;
+}
+.start-cta:hover{background:var(--accent-ink);transform:translateY(-1px);box-shadow:0 8px 18px rgba(22,105,86,.25)}
+kbd{
+  display:inline-block;padding:2px 8px;margin:0 2px;
+  background:var(--surface-2);border:1px solid var(--line);border-bottom-width:2px;
+  border-radius:5px;font-family:var(--font-body);font-size:12.5px;font-weight:700;color:var(--ink);
+}
+
+/* ---------- Bookmarks section ---------- */
+.bookmarks-section{margin-bottom:48px;padding:24px;background:linear-gradient(135deg,var(--accent-soft),var(--surface-2));border-radius:var(--radius);border:1px solid var(--line)}
+.bm-clear{
+  background:transparent;border:1px solid var(--line);
+  color:var(--muted);font-family:var(--font-body);font-weight:700;font-size:12.5px;
+  padding:5px 12px;border-radius:999px;cursor:pointer;
+}
+.bm-clear:hover{border-color:var(--accent);color:var(--accent-ink)}
+.bookmark-card{position:relative}
+.bm-remove{
+  position:absolute;top:-6px;left:-6px;z-index:5;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--accent);color:#fff;border:2px solid var(--surface);
+  font-size:14px;line-height:1;font-weight:800;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.bm-remove:hover{background:#A83232}
+
+/* ---------- Print stylesheet (teacher mode) ---------- */
+@media print{
+  body.teacher-mode{background:#fff;color:#000}
+  body.teacher-mode .site-header,
+  body.teacher-mode .site-footer,
+  body.teacher-mode .reading-controls,
+  body.teacher-mode .share-bar,
+  body.teacher-mode .prev-next,
+  body.teacher-mode .author-card,
+  body.teacher-mode .more,
+  body.teacher-mode .back,
+  body.teacher-mode .toc,
+  body.teacher-mode #progress,
+  body.teacher-mode .search-overlay,
+  body.teacher-mode .series-nav{display:none !important}
+  body.teacher-mode .article-body,
+  body.teacher-mode .exercises{font-size:12pt;color:#000;background:#fff;border:none;box-shadow:none;padding:0}
+  body.teacher-mode .article-shell{max-width:none;padding:0}
+  body.teacher-mode .article-head{margin-bottom:18px;border-bottom:2px solid #000;padding-bottom:14px}
+  body.teacher-mode .article-head h1{font-size:20pt;color:#000}
+  body.teacher-mode .verse,body.teacher-mode .hadith{color:#000 !important}
+  body.teacher-mode .ex-option{padding:6px 10px;border:1px solid #999;background:#fff;color:#000;font-size:11pt}
+  body.teacher-mode .ex-marker{background:#eee !important;color:#000 !important}
+  body.teacher-mode .ex-option[disabled]{opacity:1}
+  body.teacher-mode .ex-section-title{color:#000;border-color:#000}
+  body.teacher-mode .ex-answer{display:none !important}
+  body.teacher-mode .ex-reveal{display:none !important}
+  body.teacher-mode .ex-feedback{display:none !important}
+  body.teacher-mode .exercises{border:1px solid #000;margin-top:24px;padding:18px}
+  body.teacher-mode::before{
+    content:"من موقع كلام له لازمه — kalaam-site.vercel.app";
+    display:block;text-align:center;font-weight:700;
+    padding:8px 0 14px;border-bottom:1px solid #000;margin-bottom:24px;
+  }
+  body.teacher-mode .article-head-tags .level-badge{display:none}
+  body.teacher-mode a{color:#000;text-decoration:none}
+  body.teacher-mode .orn{display:none}
+  body.teacher-mode h2{page-break-after:avoid}
+  body.teacher-mode .ex-question{page-break-inside:avoid}
+}
+
+/* ---------- Font-size scaling via --font-scale ---------- */
+:root{--font-scale:1}
+.article-body,.ex-q-text,.ex-option,.ex-answer li{
+  font-size:calc(1em * var(--font-scale));
+}
+.article-body h2{font-size:calc(1.6em * var(--font-scale))}
+.article-body h3{font-size:calc(1.2em * var(--font-scale))}
+
+/* ---------- Tashkeel button active state ---------- */
+.tashkeel-btn.active,#tashkeel-btn.active{
+  background:var(--gold);border-color:var(--gold);color:#fff;
+}
+#tashkeel-btn.active svg{color:#fff}
