@@ -1,9 +1,9 @@
 {
   "cleanUrls": true,
   "trailingSlash": false,
-  "errorPages": {
-    "404": "/404.html"
-  },
+  "routes": [
+    { "src": "/nonexistent", "dest": "/404.html" }
+  ],
   "headers": [
     {
       "source": "/fonts/(.*).woff2",
