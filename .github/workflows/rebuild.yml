@@ -1,13 +1,16 @@
-name: Vercel Rebuild (every 6 hours)
+name: Vercel Rebuild (daily backup)
 
-# Runs every 6 hours, calls the Vercel deployment API to trigger a fresh
-# production build that re-pulls published articles from Notion.
+# Runs once a day at midnight UTC (≈ 02:00 Cairo time).
+# Acts as a daily backup in case Notion content changes weren't picked up
+# by a git push. The primary deploy mechanism is the Vercel Deploy Hook
+# (called automatically when the user pushes to main, since Vercel is now
+# connected to the GitHub repo).
 # Can also be triggered manually from the Actions tab.
 
 on:
   schedule:
-    # Every 6 hours at minute 0 — runs at 00:00, 06:00, 12:00, 18:00 UTC
-    - cron: '0 */6 * * *'
+    # Daily at 00:00 UTC
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:
