@@ -29,5 +29,11 @@
         { "key": "Cache-Control", "value": "public, max-age=604800" }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/*.js": {
+      "memory": 256,
+      "maxDuration": 10
+    }
+  }
 }

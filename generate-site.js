@@ -171,14 +171,22 @@ ${analyticsScript}
 function card(a, depth = 0) {
   const href = depth === 0 ? `articles/${a.slug}` : a.slug;
   const catHref = depth === 0 ? `category/${a.categorySlug}` : `../category/${a.categorySlug}`;
-  return `<a class="card" href="${href}">
+  return `<a class="card" href="${href}" data-slug="${escAttr(a.slug)}">
   <div class="card-top">
     <span class="card-icon" aria-hidden="true">${a.icon}</span>
     <div class="card-tags">${levelBadge(a.level)}<a class="card-tag" href="${catHref}" onclick="event.stopPropagation()">${a.tag}</a></div>
   </div>
   <h3>${a.title}</h3>
   <p>${a.excerpt}</p>
-  <div class="card-meta"><span class="time">${toArabicDigits(a.readingTime)} دقايق قراءة</span><span class="read">اقرأ المقال <span class="arr" aria-hidden="true">←</span></span></div>
+  <div class="card-meta">
+    <span class="time">${toArabicDigits(a.readingTime)} دقايق</span>
+    <span class="card-stats" data-slug="${escAttr(a.slug)}" aria-hidden="true">
+      <span class="stat-item stat-likes"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9C1 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6 4 4.5 8C19 16.5 12 21 12 21z"/></svg><span class="stat-likes-num">·</span></span>
+      <span class="stat-sep">·</span>
+      <span class="stat-item stat-comments"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg><span class="stat-comments-num">·</span></span>
+    </span>
+    <span class="read">اقرأ <span class="arr" aria-hidden="true">←</span></span>
+  </div>
 </a>`;
 }
 
@@ -371,17 +379,65 @@ function buildArticle(a, allArticles) {
     <button class="share-btn" data-net="copy" type="button" aria-label="نسخ الرابط" data-url="${shareUrl}">${ICONS.copy}</button>
   </div>`;
 
-  // Prev / next (general — not series)
-  const prevHtml = prev ? `<a href="${prev.slug}"><span class="pn-label">← المقال السابق</span><span class="pn-title">${prev.title}</span></a>` : '<span></span>';
-  const nextHtml = next ? `<a class="pn-next" href="${next.slug}"><span class="pn-label">المقال التالي →</span><span class="pn-title">${next.title}</span></a>` : '<span></span>';
+  // Prev / next (general — not series) — redesigned as clear clickable cards
+  const prevCard = prev ? `<a class="pn-card pn-prev" href="${prev.slug}">
+    <span class="pn-card-label">المقال السابق</span>
+    <span class="pn-card-title">${prev.title}</span>
+    <span class="pn-card-meta">
+      <span class="pn-card-tag">${prev.tag}</span>
+      <span class="pn-card-arrow" aria-hidden="true">←</span>
+    </span>
+  </a>` : '';
+  const nextCard = next ? `<a class="pn-card pn-next" href="${next.slug}">
+    <span class="pn-card-label">المقال التالي</span>
+    <span class="pn-card-title">${next.title}</span>
+    <span class="pn-card-meta">
+      <span class="pn-card-tag">${next.tag}</span>
+      <span class="pn-card-arrow" aria-hidden="true">→</span>
+    </span>
+  </a>` : '';
+  const onlyClass = (prev && !next) || (!prev && next) ? ' is-only' : '';
+  const prevNextHtml = (prev || next) ? `
+  <nav class="prev-next" aria-label="المقالات ذات الصلة">
+    <h2 class="pn-heading">اقرأ كمان</h2>
+    <div class="pn-cards">${prevCard}${nextCard}</div>
+  </nav>` : '';
 
   const moreSection = others.length ? `
   <div class="more">
-    <h2>اقرأ كمان</h2>
+    <h2>مقالات تانية</h2>
     <div class="grid" style="padding-bottom:0">
 ${otherCards}
     </div>
   </div>` : '';
+
+  // Engagement section (likes + comments) — auto-works for any article by slug
+  const engagementHtml = `
+  <section class="engagement" id="engagement" data-slug="${escAttr(a.slug)}">
+    <div class="like-row">
+      <button class="like-btn" id="like-btn" type="button" aria-pressed="false" data-slug="${escAttr(a.slug)}">
+        <span class="like-heart" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9C1 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6 4 4.5 8C19 16.5 12 21 12 21z"/></svg></span>
+        <span class="like-label">أعجبني</span>
+      </button>
+      <span class="like-count" id="like-count" data-zero="لا إعجابات بعد">…</span>
+      <span class="like-msg" id="like-msg" role="status" aria-live="polite"></span>
+    </div>
+    <div class="comments-section">
+      <h3 class="comments-head">التعليقات <span class="comments-count" id="comments-count">…</span></h3>
+      <form class="comment-form" id="comment-form" data-slug="${escAttr(a.slug)}">
+        <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <div class="comment-form-row">
+          <input type="text" name="name" class="comment-form-name" placeholder="اسمك (اختياري)" maxlength="50" autocomplete="name">
+        </div>
+        <textarea name="text" class="comment-form-text" placeholder="اكتب تعليقك…" maxlength="1000" required></textarea>
+        <div class="comment-form-actions">
+          <span class="comment-form-hint">بحد أقصى ١٠٠٠ حرف — من غير روابط</span>
+          <button type="submit" class="comment-submit" id="comment-submit">نشر التعليق</button>
+        </div>
+      </form>
+      <div class="comment-list" id="comment-list" aria-live="polite"></div>
+    </div>
+  </section>`;
 
   // Hidden plain-text version for "copy text" + teacher print
   const plainTextEsc = escAttr(a.plainText);
@@ -410,7 +466,8 @@ ${a.mainHtml}
     ${a.voweledHtml ? `<div class="article-body article-body-voweled" id="article-voweled" hidden>${a.voweledHtml}</div>` : ''}
     ${a.exercisesHtml}
     ${shareBlock}
-    <div class="prev-next">${prevHtml}${nextHtml}</div>
+    ${prevNextHtml}
+    ${engagementHtml}
     <aside class="author-card">
       <span class="avatar" aria-hidden="true">ز</span>
       <div class="author-info">
@@ -523,6 +580,134 @@ function buildAbout() {
     body,
     depth: 0,
     canonical: `${SITE_URL}/about`,
+    ogImage: `${SITE_URL}/og-default.svg`,
+  });
+}
+
+// ── /admin page (protected by ADMIN_TOKEN — login form, no server-rendered secrets) ──
+function buildAdmin() {
+  const body = `
+  <div class="admin-shell" id="admin-root">
+    <div class="admin-login" id="admin-login">
+      <h1>لوحة الإدارة</h1>
+      <p>أدخل التوكن لمشاهدة وحذف التعليقات</p>
+      <input type="password" id="admin-token-input" placeholder="ADMIN_TOKEN" autocomplete="off">
+      <button type="button" id="admin-login-btn">دخول</button>
+      <p id="admin-login-error" style="color:#A83232;font-size:13px;margin-top:10px;display:none"></p>
+    </div>
+    <div id="admin-content" hidden>
+      <a class="back" href="/" style="margin-bottom:18px"><span aria-hidden="true">→</span> الرئيسية</a>
+      <h1 style="font-family:var(--font-display);font-size:30px;font-weight:700;margin:0 0 8px">لوحة إدارة التعليقات</h1>
+      <p style="color:var(--muted);font-size:14px;margin-bottom:18px">إجمالي التعليقات واللايكات لكل مقال، مع إمكانية حذف أي تعليق مسيء.</p>
+      <div class="admin-stats" id="admin-stats"></div>
+      <h2 style="font-family:var(--font-display);font-size:22px;font-weight:700;margin:24px 0 14px">كل التعليقات</h2>
+      <div id="admin-comments"></div>
+    </div>
+  </div>
+  <script>
+  (function(){
+    function $(id){ return document.getElementById(id); }
+    var tokenKey = 'kalaam-admin-token';
+    var savedToken = '';
+    try { savedToken = localStorage.getItem(tokenKey) || ''; } catch(e){}
+
+    function login(token){
+      $('admin-login-error').style.display = 'none';
+      $('admin-login-error').textContent = '';
+      fetch('/api/admin-stats', { headers: { 'X-Admin-Token': token } })
+        .then(function(r){
+          if (r.status === 401) { throw new Error('توكن غلط'); }
+          if (!r.ok) { throw new Error('مشكلة في السيرفر'); }
+          return r.json();
+        })
+        .then(function(stats){
+          try { localStorage.setItem(tokenKey, token); } catch(e){}
+          showDashboard(token, stats);
+        })
+        .catch(function(e){
+          $('admin-login-error').textContent = e.message || 'فيه مشكلة';
+          $('admin-login-error').style.display = 'block';
+        });
+    }
+
+    function showDashboard(token, stats){
+      $('admin-login').hidden = true;
+      $('admin-content').hidden = false;
+      // Stats
+      var statsHtml = '';
+      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.totalComments || 0) + '</div><div class="lbl">تعليق</div></div>';
+      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.totalLikes || 0) + '</div><div class="lbl">إعجاب</div></div>';
+      statsHtml += '<div class="admin-stat"><div class="num">' + (stats.slugs ? stats.slugs.length : 0) + '</div><div class="lbl">مقال بتعليقات</div></div>';
+      $('admin-stats').innerHTML = statsHtml;
+      // Load all comments
+      fetch('/api/comment-admin?all=1', { headers: { 'X-Admin-Token': token } })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          if (!d.items || d.items.length === 0) {
+            $('admin-comments').innerHTML = '<div class="admin-empty">مفيش تعليقات لحد دلوقتي</div>';
+            return;
+          }
+          var html = d.items.map(function(c){
+            return '<div class="admin-comment">' +
+              '<div class="admin-comment-top">' +
+                '<span class="admin-comment-meta">' + new Date(c.ts).toLocaleString('ar-EG') + ' • ' + (c.name || 'زائر') + '</span>' +
+                '<span class="admin-comment-slug">' + c.slug + '</span>' +
+              '</div>' +
+              '<div class="admin-comment-text">' + escapeHtml(c.text || '') + '</div>' +
+              '<div class="admin-comment-actions">' +
+                '<button class="admin-delete-btn" data-id="' + c.id + '" data-slug="' + c.slug + '">حذف</button>' +
+              '</div>' +
+            '</div>';
+          }).join('');
+          $('admin-comments').innerHTML = html;
+          // Wire delete buttons
+          document.querySelectorAll('.admin-delete-btn').forEach(function(btn){
+            btn.addEventListener('click', function(){
+              if (!confirm('متأكد إنك عايز تمسح التعليق ده؟')) return;
+              var id = btn.getAttribute('data-id');
+              var slug = btn.getAttribute('data-slug');
+              fetch('/api/comment-admin?id=' + encodeURIComponent(id) + '&slug=' + encodeURIComponent(slug), {
+                method: 'DELETE',
+                headers: { 'X-Admin-Token': token }
+              }).then(function(r){ return r.json(); }).then(function(d){
+                if (d.ok) {
+                  var card = btn.closest('.admin-comment');
+                  if (card) card.remove();
+                } else {
+                  alert(d.error || 'مشكلة في الحذف');
+                }
+              }).catch(function(){ alert('مشكلة في الشبكة'); });
+            });
+          });
+        });
+    }
+
+    function escapeHtml(s){
+      return String(s).replace(/[&<>"']/g, function(c){
+        return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+      });
+    }
+
+    $('admin-login-btn').addEventListener('click', function(){
+      login($('admin-token-input').value);
+    });
+    $('admin-token-input').addEventListener('keypress', function(e){
+      if (e.key === 'Enter') login($('admin-token-input').value);
+    });
+
+    // Auto-login if saved token exists
+    if (savedToken) {
+      $('admin-token-input').value = savedToken;
+      login(savedToken);
+    }
+  })();
+  </script>`;
+  return shell({
+    title: 'لوحة الإدارة — كلام له لازمه',
+    metaDesc: 'لوحة إدارة التعليقات (للمشرف فقط).',
+    body,
+    depth: 0,
+    canonical: `${SITE_URL}/admin`,
     ogImage: `${SITE_URL}/og-default.svg`,
   });
 }
@@ -1314,6 +1499,304 @@ function buildAppJs() {
       }
     });
   });
+
+  // ---------- Engagement: likes + comments ----------
+  var ENGAGEMENT_API_BASE = (window.SITE_BASE || '/') + 'api';
+  // Vercel serves /api at root regardless of SITE_BASE
+  ENGAGEMENT_API_BASE = '/api';
+
+  // Device fingerprint (lightweight, no external dep): canvas + UA + screen + tz
+  function generateFingerprint(){
+    try {
+      var canvas = document.createElement('canvas');
+      canvas.width = 200; canvas.height = 50;
+      var ctx = canvas.getContext('2d');
+      ctx.textBaseline = 'top';
+      ctx.font = '14px Arial';
+      ctx.fillStyle = '#f60';
+      ctx.fillRect(0, 0, 200, 50);
+      ctx.fillStyle = '#069';
+      ctx.fillText('kalaam-fp-' + new Date().getTimezoneOffset(), 2, 2);
+      var dataUrl = canvas.toDataURL();
+      var fp = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width + 'x' + screen.height + 'x' + screen.colorDepth,
+        new Date().getTimezoneOffset(),
+        dataUrl.slice(-64)
+      ].join('|');
+      // Simple hash → 32-char hex
+      var h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+      for (var i = 0; i < fp.length; i++) {
+        var c = fp.charCodeAt(i);
+        h1 = Math.imul(h1 ^ c, 2654435761);
+        h2 = Math.imul(h2 ^ c, 1597334677);
+      }
+      h1 = (h1 >>> 0).toString(16).padStart(8, '0');
+      h2 = (h2 >>> 0).toString(16).padStart(8, '0');
+      var extra = (Math.imul(h1.charCodeAt(0), h2.charCodeAt(1)) >>> 0).toString(16).padStart(8, '0');
+      var extra2 = (Math.imul(h2.charCodeAt(2), h1.charCodeAt(3)) >>> 0).toString(16).padStart(8, '0');
+      return h1 + h2 + extra + extra2;
+    } catch(e) {
+      return 'fp-' + Math.random().toString(36).slice(2) + '-' + Date.now();
+    }
+  }
+
+  var FINGERPRINT_KEY = 'kalaam-fp';
+  function getFingerprint(){
+    try {
+      var fp = localStorage.getItem(FINGERPRINT_KEY);
+      if (!fp || fp.length < 16) {
+        fp = generateFingerprint();
+        localStorage.setItem(FINGERPRINT_KEY, fp);
+      }
+      return fp;
+    } catch(e) {
+      return generateFingerprint();
+    }
+  }
+
+  var LIKED_KEY = 'kalaam-liked';
+  function getLikedSlugs(){
+    try { return JSON.parse(localStorage.getItem(LIKED_KEY) || '[]'); } catch(e){ return []; }
+  }
+  function setLikedSlugs(arr){
+    try { localStorage.setItem(LIKED_KEY, JSON.stringify(arr)); } catch(e){}
+  }
+
+  function toArabicNum(n){
+    n = String(n);
+    var map = {'0':'٠','1':'١','2':'٢','3':'٣','4':'٤','5':'٥','6':'٦','7':'٧','8':'٨','9':'٩'};
+    return n.replace(/[0-9]/g, function(d){ return map[d]; });
+  }
+
+  function fmtTimeAgo(ts){
+    var diff = Date.now() - ts;
+    var sec = Math.floor(diff / 1000);
+    var min = Math.floor(sec / 60);
+    var hr = Math.floor(min / 60);
+    var day = Math.floor(hr / 24);
+    if (sec < 60) return 'الآن';
+    if (min < 60) return 'منذ ' + toArabicNum(min) + ' دقيقة';
+    if (hr < 24) return 'منذ ' + toArabicNum(hr) + ' ساعة';
+    if (day < 30) return 'منذ ' + toArabicNum(day) + ' يوم';
+    return new Date(ts).toLocaleDateString('ar-EG');
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, function(c){
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
+  }
+
+  // Like button on article page
+  var likeBtn = document.getElementById('like-btn');
+  var likeCount = document.getElementById('like-count');
+  var likeMsg = document.getElementById('like-msg');
+  if (likeBtn) {
+    var slug = likeBtn.getAttribute('data-slug');
+    var fp = getFingerprint();
+    var likedSlugs = getLikedSlugs();
+    var isLiked = likedSlugs.indexOf(slug) !== -1;
+    if (isLiked) {
+      likeBtn.classList.add('is-liked');
+      likeBtn.setAttribute('aria-pressed', 'true');
+      likeBtn.querySelector('.like-label').textContent = 'أعجبك';
+    }
+
+    // Fetch initial count
+    fetch(ENGAGEMENT_API_BASE + '/likes?slug=' + encodeURIComponent(slug))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d && typeof d.count === 'number') {
+          updateLikeCount(d.count);
+        }
+      })
+      .catch(function(){ /* silent */ });
+
+    function updateLikeCount(count){
+      if (!likeCount) return;
+      if (count === 0) {
+        likeCount.textContent = likeCount.getAttribute('data-zero') || 'لا إعجابات بعد';
+        likeCount.classList.remove('has-likes');
+      } else {
+        likeCount.textContent = toArabicNum(count) + ' إعجاب';
+        likeCount.classList.add('has-likes');
+      }
+    }
+
+    function showMsg(text, kind){
+      if (!likeMsg) return;
+      likeMsg.textContent = text;
+      likeMsg.className = 'like-msg show ' + (kind || '');
+      setTimeout(function(){ likeMsg.className = 'like-msg'; }, 3500);
+    }
+
+    likeBtn.addEventListener('click', function(){
+      likeBtn.classList.add('loading');
+      var wasLiked = likeBtn.classList.contains('is-liked');
+      var method = wasLiked ? 'DELETE' : 'POST';
+      fetch(ENGAGEMENT_API_BASE + '/like', {
+        method: method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: slug, fingerprint: fp })
+      })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          likeBtn.classList.remove('loading');
+          if (d.error) { showMsg(d.error, 'error'); return; }
+          if (typeof d.count === 'number') updateLikeCount(d.count);
+          if (d.ok && d.liked) {
+            likeBtn.classList.add('is-liked');
+            likeBtn.setAttribute('aria-pressed', 'true');
+            likeBtn.querySelector('.like-label').textContent = 'أعجبك';
+            if (likedSlugs.indexOf(slug) === -1) { likedSlugs.push(slug); setLikedSlugs(likedSlugs); }
+            showMsg('شكرًا لإعجابك', 'success');
+          } else if (d.ok && d.liked === false) {
+            likeBtn.classList.remove('is-liked');
+            likeBtn.setAttribute('aria-pressed', 'false');
+            likeBtn.querySelector('.like-label').textContent = 'أعجبني';
+            var i = likedSlugs.indexOf(slug);
+            if (i !== -1) { likedSlugs.splice(i, 1); setLikedSlugs(likedSlugs); }
+          } else if (d.alreadyLiked) {
+            likeBtn.classList.add('is-liked');
+            likeBtn.setAttribute('aria-pressed', 'true');
+            likeBtn.querySelector('.like-label').textContent = 'أعجبك';
+            showMsg(d.message || 'تم تسجيل إعجابك قبل كده', 'success');
+          } else if (d.rateLimited) {
+            showMsg(d.message || 'وصلت للحد الأقصى', 'error');
+          }
+        })
+        .catch(function(){
+          likeBtn.classList.remove('loading');
+          showMsg('فيه مشكلة، حاول تاني', 'error');
+        });
+    });
+  }
+
+  // Comments on article page
+  var commentForm = document.getElementById('comment-form');
+  var commentList = document.getElementById('comment-list');
+  var commentsCount = document.getElementById('comments-count');
+  var commentSlug = commentForm ? commentForm.getAttribute('data-slug') : null;
+  if (commentForm && commentSlug) {
+    var commentFp = getFingerprint();
+
+    function renderComment(c, isMine){
+      var div = document.createElement('div');
+      div.className = 'comment-item' + (isMine ? ' is-mine' : '');
+      var initial = (c.name || 'ز').charAt(0);
+      div.innerHTML =
+        '<div class="comment-top">' +
+          '<span class="comment-author"><span class="comment-avatar">' + escapeHtml(initial) + '</span>' + escapeHtml(c.name || 'زائر') + '</span>' +
+          '<span class="comment-time">' + escapeHtml(fmtTimeAgo(c.ts)) + '</span>' +
+        '</div>' +
+        '<div class="comment-text">' + escapeHtml(c.text) + '</div>';
+      return div;
+    }
+
+    function renderEmpty(){
+      var div = document.createElement('div');
+      div.className = 'comment-empty';
+      div.textContent = 'لسه مفيش تعليقات — كن أول واحد يكتب';
+      return div;
+    }
+
+    function updateCommentsCount(count){
+      if (!commentsCount) return;
+      commentsCount.textContent = toArabicNum(count);
+    }
+
+    // Load existing comments
+    fetch(ENGAGEMENT_API_BASE + '/comments?slug=' + encodeURIComponent(commentSlug))
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (!d || !d.items) return;
+        updateCommentsCount(d.count || 0);
+        commentList.innerHTML = '';
+        if (d.items.length === 0) {
+          commentList.appendChild(renderEmpty());
+        } else {
+          d.items.forEach(function(c){
+            commentList.appendChild(renderComment(c, false));
+          });
+        }
+      })
+      .catch(function(){ /* silent */ });
+
+    commentForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var submitBtn = document.getElementById('comment-submit');
+      var nameInput = commentForm.querySelector('input[name="name"]');
+      var textInput = commentForm.querySelector('textarea[name="text"]');
+      var hpInput = commentForm.querySelector('input[name="website"]');
+      var name = nameInput ? nameInput.value : '';
+      var text = textInput ? textInput.value : '';
+      var hp = hpInput ? hpInput.value : '';
+      if (!text.trim()) return;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'جاري النشر…';
+      fetch(ENGAGEMENT_API_BASE + '/comment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug: commentSlug, name: name, text: text, fingerprint: commentFp, website: hp })
+      })
+        .then(function(r){ return r.json(); })
+        .then(function(d){
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'نشر التعليق';
+          if (d.error) { alert(d.error); return; }
+          if (d.ok && d.fake) {
+            // Honeypot triggered — silently "succeed" without actually adding
+            commentForm.reset();
+            return;
+          }
+          if (d.ok && d.comment) {
+            // Remove empty placeholder
+            var empty = commentList.querySelector('.comment-empty');
+            if (empty) empty.remove();
+            commentList.insertBefore(renderComment(d.comment, true), commentList.firstChild);
+            updateCommentsCount(d.count);
+            commentForm.reset();
+          }
+        })
+        .catch(function(){
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'نشر التعليق';
+          alert('فيه مشكلة، حاول تاني');
+        });
+    });
+  }
+
+  // Card stats on homepage / category pages — fetch likes+comments counts in batch
+  var statEls = document.querySelectorAll('.card-stats[data-slug]');
+  if (statEls.length > 0) {
+    var slugs = [];
+    statEls.forEach(function(el){
+      var s = el.getAttribute('data-slug');
+      if (slugs.indexOf(s) === -1) slugs.push(s);
+    });
+    Promise.all([
+      fetch(ENGAGEMENT_API_BASE + '/likes?slugs=' + encodeURIComponent(slugs.join(','))).then(function(r){ return r.json(); }),
+      fetch(ENGAGEMENT_API_BASE + '/comments?slugs=' + encodeURIComponent(slugs.join(','))).then(function(r){ return r.json(); })
+    ]).then(function(results){
+      var likes = results[0] && results[0].items ? results[0].items : [];
+      var comments = results[1] && results[1].items ? results[1].items : [];
+      var likeMap = {}, commentMap = {};
+      likes.forEach(function(x){ likeMap[x.slug] = x.count; });
+      comments.forEach(function(x){ commentMap[x.slug] = x.count; });
+      statEls.forEach(function(el){
+        var s = el.getAttribute('data-slug');
+        var l = likeMap[s] || 0;
+        var c = commentMap[s] || 0;
+        var lNum = el.querySelector('.stat-likes-num');
+        var cNum = el.querySelector('.stat-comments-num');
+        if (lNum) lNum.textContent = l > 0 ? toArabicNum(l) : '·';
+        if (cNum) cNum.textContent = c > 0 ? toArabicNum(c) : '·';
+        el.classList.remove('is-loading');
+      });
+    }).catch(function(){ /* silent */ });
+  }
 })();
 `;
 }
@@ -1434,6 +1917,10 @@ async function main() {
   // /start page (entry guide for new visitors)
   fs.writeFileSync('site/start.html', minifyHtml(buildStart(articles)), 'utf8');
   console.log('✅ start.html');
+
+  // /admin page (protected — admin token required for actual data)
+  fs.writeFileSync('site/admin.html', minifyHtml(buildAdmin()), 'utf8');
+  console.log('✅ admin.html');
 
   // Index
   fs.writeFileSync('site/index.html', minifyHtml(buildIndex(articles)), 'utf8');
