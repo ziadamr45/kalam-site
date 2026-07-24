@@ -1,0 +1,169 @@
+name: Preview Redesign v2
+
+# Deploys the redesign-v2 branch to Vercel as a PREVIEW deployment (not production).
+# Uses the existing VERCEL_TOKEN + VERCEL_PROJECT_ID secrets.
+# Triggered manually from the Actions tab.
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy (default: redesign-v2)'
+        required: false
+        default: 'redesign-v2'
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    name: Deploy redesign-v2 as Vercel preview
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || 'redesign-v2' }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps + build
+        run: |
+          npm install
+          node generate-site-v2.js
+
+      - name: Verify build output
+        run: |
+          ls -la site/
+          ls site/articles/
+          echo "---"
+          echo "Article count: $(ls site/articles/*.html | wc -l)"
+
+      - name: Upload files to Vercel + create PREVIEW deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          BRANCH: ${{ github.event.inputs.branch || 'redesign-v2' }}
+        run: |
+          set -euo pipefail
+          echo "📤 Uploading files to Vercel..."
+          SHAS_FILE=$(mktemp)
+          echo "[" > "$SHAS_FILE"
+          FIRST=1
+
+          # Walk site/ directory + api/ directory + vercel.json + package.json
+          FILES_LIST=$(mktemp)
+          find site/ -type f >> "$FILES_LIST"
+          find api/ -type f -name "*.js" >> "$FILES_LIST"
+          [ -f vercel.json ] && echo "vercel.json" >> "$FILES_LIST"
+          [ -f package.json ] && echo "package.json" >> "$FILES_LIST"
+          [ -f node_modules/@notionhq/client/package.json ] || echo "no notion client" >&2
+
+          # Also include node_modules needed by API functions
+          # The api/*.js files require @notionhq/client (only for build) — but the API functions
+          # only use Edge Config REST API (no SDK). So we don't need to upload node_modules.
+          # We do need a package.json with no deps for Vercel to bundle the functions properly.
+
+          TOTAL=$(wc -l < "$FILES_LIST")
+          COUNT=0
+          while IFS= read -r FILE; do
+            COUNT=$((COUNT + 1))
+            # Skip if file doesn't exist or is empty
+            [ -f "$FILE" ] || continue
+            [ -s "$FILE" ] || continue
+
+            SHA=$(sha1sum "$FILE" | awk '{print $1}')
+
+            RES=$(curl -s -o /dev/null -w "%{http_code}" \
+              -X POST "https://api.vercel.com/v2/files" \
+              -H "Authorization: Bearer $VERCEL_TOKEN" \
+              -H "Content-Type: application/octet-stream" \
+              -H "x-vercel-digest: $SHA" \
+              --data-binary @"$FILE")
+
+            if [ "$RES" != "200" ] && [ "$RES" != "409" ]; then
+              echo "  ✗ upload failed for $FILE (HTTP $RES)"
+              continue
+            fi
+
+            if [ $FIRST -eq 1 ]; then FIRST=0; else echo "," >> "$SHAS_FILE"; fi
+            printf '  {"file":"%s","sha":"%s"}' "$FILE" "$SHA" >> "$SHAS_FILE"
+
+            if [ $((COUNT % 10)) -eq 0 ]; then
+              echo "  $COUNT / $TOTAL uploaded..."
+            fi
+          done < "$FILES_LIST"
+          echo "]" >> "$SHAS_FILE"
+
+          echo "🚀 Creating PREVIEW deployment (target=preview, NOT production)..."
+
+          # Build deployment payload
+          DEPLOY_PAYLOAD=$(python3 << 'PYEOF'
+          import json, os
+          shas_path = os.environ.get('SHAS_FILE', '/tmp/shas.json')
+          with open(shas_path) as f:
+              files = json.load(f)
+          # Map each file: { "file": "path", "sha": "hash" } → { "path/to/file": "hash" }
+          files_dict = { item["file"]: item["sha"] for item in files }
+          payload = {
+              "name": "kalaam-site",
+              "files": [ {"file": k, "sha": v} for k, v in files_dict.items() ],
+              "projectSettings": {
+                  "framework": None,
+                  "buildCommand": None,
+                  "outputDirectory": "site",
+                  "installCommand": None,
+                  "devCommand": None
+              },
+              "target": "",  # empty = preview deployment
+              "projectId": os.environ.get('VERCEL_PROJECT_ID'),
+              "orgId": os.environ.get('VERCEL_ORG_ID'),
+              "branch": os.environ.get('BRANCH', 'redesign-v2'),
+              "meta": {
+                  "githubCommitMessage": "redesign-v2 preview",
+                  "githubCommitRef": os.environ.get('BRANCH', 'redesign-v2'),
+              }
+          }
+          print(json.dumps(payload))
+          PYEOF
+          )
+
+          DEPLOY_RES=$(echo "$DEPLOY_PAYLOAD" | curl -s -X POST "https://api.vercel.com/v13/deployments?teamId=${VERCEL_ORG_ID}" \
+            -H "Authorization: Bearer $VERCEL_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d @-)
+
+          echo "Deployment response:"
+          echo "$DEPLOY_RES" | python3 -m json.tool 2>/dev/null || echo "$DEPLOY_RES"
+
+          # Extract URL
+          PREVIEW_URL=$(echo "$DEPLOY_RES" | python3 -c "import sys, json; d=json.load(sys.stdin); print('https://' + d.get('url', 'unknown'))" 2>/dev/null || echo "unknown")
+          INSPECT_URL=$(echo "$DEPLOY_RES" | python3 -c "import sys, json; d=json.load(sys.stdin); print(d.get('inspectorUrl', 'unknown'))" 2>/dev/null || echo "unknown")
+
+          echo ""
+          echo "✅ Preview URL: $PREVIEW_URL"
+          echo "🔍 Inspect URL: $INSPECT_URL"
+          echo ""
+          echo "PREVIEW_URL=$PREVIEW_URL" >> $GITHUB_ENV
+          echo "preview_url=$PREVIEW_URL" >> $GITHUB_OUTPUT
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## 🎨 Redesign v2 Preview Deployment" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Preview URL**: ${{ env.PREVIEW_URL || 'deployment failed — check logs' }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### What's deployed:" >> $GITHUB_STEP_SUMMARY
+          echo "- Homepage: \`/\" (Arabic) and \`/en/\" (English)" >> $GITHUB_STEP_SUMMARY
+          echo "- Article: \`/articles/trend.html\" and \`/en/articles/trend.html\"" >> $GITHUB_STEP_SUMMARY
+          echo "- Style Guide: \`/style-guide.html\" and \`/en/style-guide.html\"" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Build artifacts:" >> $GITHUB_STEP_SUMMARY
+          echo "- Articles: \`$(ls site/articles/*.html 2>/dev/null | wc -l) Arabic, $(ls site/en/articles/*.html 2>/dev/null | wc -l) English\`" >> $GITHUB_STEP_SUMMARY
+          echo "- CSS size: \`$(wc -c < site/css/style.css) bytes\`" >> $GITHUB_STEP_SUMMARY
+          echo "- JS size: \`$(wc -c < site/js/app.js) bytes\`" >> $GITHUB_STEP_SUMMARY
