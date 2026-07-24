@@ -55,28 +55,24 @@ jobs:
         run: |
           set -euo pipefail
           echo "📤 Uploading files to Vercel..."
-          SHAS_FILE=$(mktemp)
+          # Use fixed path so the python heredoc can find it without env propagation issues
+          SHAS_FILE="/tmp/shas.json"
+          rm -f "$SHAS_FILE"
           echo "[" > "$SHAS_FILE"
           FIRST=1
 
-          # Walk site/ directory + api/ directory + vercel.json + package.json
-          FILES_LIST=$(mktemp)
+          # Build list of files to upload (site/ + api/ + vercel.json + package.json)
+          FILES_LIST="/tmp/files.list"
+          : > "$FILES_LIST"
           find site/ -type f >> "$FILES_LIST"
           find api/ -type f -name "*.js" >> "$FILES_LIST"
           [ -f vercel.json ] && echo "vercel.json" >> "$FILES_LIST"
           [ -f package.json ] && echo "package.json" >> "$FILES_LIST"
-          [ -f node_modules/@notionhq/client/package.json ] || echo "no notion client" >&2
-
-          # Also include node_modules needed by API functions
-          # The api/*.js files require @notionhq/client (only for build) — but the API functions
-          # only use Edge Config REST API (no SDK). So we don't need to upload node_modules.
-          # We do need a package.json with no deps for Vercel to bundle the functions properly.
 
           TOTAL=$(wc -l < "$FILES_LIST")
           COUNT=0
           while IFS= read -r FILE; do
             COUNT=$((COUNT + 1))
-            # Skip if file doesn't exist or is empty
             [ -f "$FILE" ] || continue
             [ -s "$FILE" ] || continue
 
@@ -105,12 +101,10 @@ jobs:
 
           echo "🚀 Creating PREVIEW deployment (target=preview, NOT production)..."
 
-          # Build deployment payload
-          export SHAS_FILE
+          # Build deployment payload (python reads /tmp/shas.json directly — no env var needed)
           DEPLOY_PAYLOAD=$(python3 << 'PYEOF'
           import json, os
-          shas_path = os.environ.get('SHAS_FILE', '/tmp/shas.json')
-          with open(shas_path) as f:
+          with open('/tmp/shas.json') as f:
               files = json.load(f)
           files_dict = { item["file"]: item["sha"] for item in files }
           payload = {
