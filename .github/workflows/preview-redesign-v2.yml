@@ -31,6 +31,10 @@ jobs:
           node-version: '20'
 
       - name: Install deps + build
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          SITE_URL: https://kalaam-site.vercel.app
         run: |
           npm install
           node generate-site-v2.js
