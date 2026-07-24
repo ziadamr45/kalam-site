@@ -137,10 +137,10 @@ function shell({ title, metaDesc, body, depth = 0, head = '', canonical = '', og
   const locale = LOCALES[lang];
   const YEAR = fmtNum(lang, new Date().getFullYear());
 
-  // Font preloads — different per language (Arabic: Tajawal+Amiri; English: Inter+Source Serif 4)
+  // Font preloads — luxury design uses NotoArabic TTF for Arabic; Inter+Source Serif 4 for English
   const fontPreloads = lang === 'ar'
-    ? `<link rel="preload" href="/fonts/tajawal-400-ar.woff2" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/fonts/amiri-400-ar.woff2" as="font" type="font/woff2" crossorigin>`
+    ? `<link rel="preload" href="/fonts/NotoArabic-Regular.ttf" as="font" type="font/ttf" crossorigin>
+  <link rel="preload" href="/fonts/NotoArabic-Bold.ttf" as="font" type="font/ttf" crossorigin>`
     : `<link rel="preload" href="/fonts/inter-la.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/source-serif-4-la.woff2" as="font" type="font/woff2" crossorigin>`;
 
@@ -181,43 +181,52 @@ function shell({ title, metaDesc, body, depth = 0, head = '', canonical = '', og
 <meta property="og:description" content="${escAttr(metaDesc)}">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="${locale.html.locale}">
-<meta name="theme-color" content="#FAF9F6" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#1B1A17" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f0e8" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#1a1d1b" media="(prefers-color-scheme: dark)">
 ${ogImageTag}
 ${canonicalTag}
 ${hreflangTags}
 ${fontPreloads}
 <link rel="stylesheet" href="${cssHref}">
 <link rel="alternate" type="application/rss+xml" title="${escAttr(t(lang, 'site.name'))}" href="${rssLink}">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23166956'/><text x='50' y='72' font-size='62' text-anchor='middle' fill='white' font-family='${faviconFont}'>${faviconChar}</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='22' fill='%23123e32'/><text x='50' y='72' font-size='62' text-anchor='middle' fill='white' font-family='serif'>${faviconChar}</text></svg>">
 ${jsonLdTag}
 ${head}
 </head>
 <body>
 <a class="skip-link" href="#main">${t(lang, 'nav.skipToContent')}</a>
 <div id="progress" aria-hidden="true"></div>
+<div class="topline"></div>
 <header class="site-header">
-  <div class="wrap">
+  <div class="container nav">
     <a class="brand" href="${homeHref}" aria-label="${escAttr(t(lang, 'nav.brandAria'))}">
-      <span class="brand-mark" aria-hidden="true">${lang === 'ar' ? 'ك' : 'K'}</span>
-      <span>
-        <span class="brand-name">${t(lang, 'site.name')}</span>
-        <span class="brand-sub">${t(lang, 'site.tagline')}</span>
-      </span>
+      <span class="brand-seal" aria-hidden="true">${lang === 'ar' ? 'ك' : 'K'}</span>
+      <span class="brand-copy">${t(lang, 'site.name')}<small>${t(lang, 'site.tagline')}</small></span>
     </a>
-    <div class="header-utils">
+    <nav class="nav-links">
+      <a href="${homeHref}#articles">${t(lang, 'home.articles')}</a>
+      <a href="${homeHref}#values">${t(lang, 'home.values')}</a>
+      <a href="${homeHref}#about">${t(lang, 'nav.about')}</a>
+    </nav>
+    <div class="nav-actions">
       <button class="icon-btn" id="search-btn" aria-label="${escAttr(t(lang, 'nav.search'))}" type="button">${ICONS.search}</button>
-      <button class="icon-btn" id="theme-btn" aria-label="${escAttr(t(lang, 'nav.themeToggle'))}" type="button">${ICONS.sun}${ICONS.moon}</button>
       ${langSwitchHtml}
-      <a class="header-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">${t(lang, 'nav.personalSite')} <span aria-hidden="true">↗</span></a>
+      <button class="icon-btn" id="theme-btn" aria-label="${escAttr(t(lang, 'nav.themeToggle'))}" type="button">${ICONS.sun}${ICONS.moon}</button>
     </div>
   </div>
 </header>
 <main id="main">${body}</main>
-<footer class="site-footer">
-  <div class="wrap">
-    <span class="f-brand">${t(lang, 'site.name')}<span style="color:var(--gold)">${t(lang, 'footer.dot')}</span></span>
-    <span class="f-note">${t(lang, 'footer.rights', { year: YEAR })} <a href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">${t(lang, 'footer.authorName')}</a></span>
+<footer class="site-footer" id="about">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">${t(lang, 'site.name')}<p>${t(lang, 'footer.tagline')} · ${t(lang, 'footer.authorName')}</p></div>
+      <div class="footer-links">
+        <a href="${homeHref}">${t(lang, 'nav.home')}</a>
+        <a href="${homeHref}#articles">${t(lang, 'home.articles')}</a>
+        <a href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">${t(lang, 'nav.personalSite')} ↗</a>
+      </div>
+    </div>
+    <div class="copyright">© ${YEAR} ${t(lang, 'site.name')} — ${t(lang, 'footer.rights', { year: YEAR })}</div>
   </div>
 </footer>
 
@@ -305,86 +314,134 @@ ${analyticsScript}
 </html>`;
 }
 
-// ── Article card ─────────────────────────────────────────────────────────────
-// NOTE: HTML forbids nesting <a> inside <a> — browsers auto-close the outer
-// <a> when they hit the inner one, breaking the card layout. So the inner
-// category link is rendered as a <span> with role=link + JS navigation.
-// lang: 'ar' | 'en' — drives article link path + UI strings
-// depth: 0 = root, 1 = subdirectory, 2 = /en/articles/ (two levels deep)
+// ── Article card (luxury "article-row" style) ────────────────────────────────
+// Used on category pages (still as rows like the home list)
 function card(a, depth = 0, lang = 'ar') {
-  const articleBase = lang === 'en' ? 'articles/' : 'articles/';
-  const catBase = lang === 'en' ? 'category/' : 'category/';
-  const href = depth === 0
-    ? `${articleBase}${a.slug}`
-    : (depth === 1 ? `${articleBase}${a.slug}` : `${articleBase}${a.slug}`);
-  // For depth=0 (root): articles/{slug}  +  category/{catSlug}
-  // For depth=1 (article dir, same level as sibling articles): {slug}  +  ../category/{catSlug}
-  // For depth=2 (/en/articles/): {slug}  +  ../category/{catSlug}
+  const articleBase = 'articles/';
+  const catBase = 'category/';
   const cardHref = depth === 0 ? `${articleBase}${a.slug}` : a.slug;
-  const catHref = depth === 0
-    ? `${catBase}${a.categorySlug}`
-    : (depth === 1 ? `../${catBase}${a.categorySlug}` : `../${catBase}${a.categorySlug}`);
-
   const tagDisplay = localizeTag(lang, a.tag);
   const minutesLabel = t(lang, 'card.minutesShort', { n: fmtNum(lang, a.readingTime) });
-  const readLabel = t(lang, 'card.read');
-  const readArrow = t(lang, 'card.readArrow');
-
-  return `<a class="card" href="${cardHref}" data-slug="${escAttr(a.slug)}">
-  <div class="card-top">
-    <span class="card-icon" aria-hidden="true">${a.icon}</span>
-    <div class="card-tags">${levelBadge(a.level, lang)}<span class="card-tag" role="link" tabindex="0" data-href="${escAttr(catHref)}" onclick="event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')" onkeypress="if(event.key==='Enter'){event.stopPropagation();event.preventDefault();window.location.href=this.getAttribute('data-href')}">${escAttr(tagDisplay)}</span></div>
+  const title = (lang === 'en' && a.titleEn) ? a.titleEn : a.title;
+  const excerpt = (lang === 'en' && a.excerptEn) ? a.excerptEn : a.excerpt;
+  // Use sequential numbers like the design (٠١, ٠٢, ...)
+  const num = (depth === 0) ? fmtNum(lang, 1 + (a._idx || 0)).padStart(2, '0') : '';
+  return `<a class="article-row" href="${cardHref}" data-slug="${escAttr(a.slug)}">
+  <span class="article-no">${num}</span>
+  <div>
+    <h3>${escapeHtml(title)}</h3>
+    <p>${escapeHtml(excerpt)}</p>
   </div>
-  <h3>${lang === 'en' && a.titleEn ? a.titleEn : a.title}</h3>
-  <p>${lang === 'en' && a.excerptEn ? a.excerptEn : a.excerpt}</p>
-  <div class="card-meta">
-    <span class="time">${minutesLabel}</span>
-    <span class="card-stats" data-slug="${escAttr(a.slug)}" aria-hidden="true">
-      <span class="stat-item stat-likes"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9C1 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6 4 4.5 8C19 16.5 12 21 12 21z"/></svg><span class="stat-likes-num">·</span></span>
-      <span class="stat-sep">·</span>
-      <span class="stat-item stat-comments"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21 6h-2v9H6v2c0 .55.45 1 1 1h11l4 4V7c0-.55-.45-1-1-1zm-4 6V3c0-.55-.45-1-1-1H3c-.55 0-1 .45-1 1v14l4-4h10c.55 0 1-.45 1-1z"/></svg><span class="stat-comments-num">·</span></span>
-    </span>
-    <span class="read">${readLabel} <span class="arr" aria-hidden="true">${readArrow}</span></span>
-  </div>
+  <span class="article-arrow" aria-hidden="true">${t(lang, 'card.readArrow')}</span>
 </a>`;
 }
 
-// ── Index page ────────────────────────────────────────────────────────────────
+// ── Index page (luxury homepage: hero + manifesto + featured + article-list + values) ──
 function buildIndex(articles, lang = 'ar') {
-  // For EN, only show translated articles. For AR, show all.
   const shown = lang === 'en' ? articles.filter(a => a.translated) : articles;
-  const cards = shown.map(a => card(a, 0, lang)).join('\n');
-  const heroQuote = t(lang, 'home.heroQuote');
-  const heroTitle = t(lang, 'home.heroTitle');
-  const heroTag = t(lang, 'home.heroTag');
-  const startHere = t(lang, 'home.startHere');
-  const startHereArrow = t(lang, 'home.startHereArrow');
-  const startHref = lang === 'en' ? 'start' : 'start';
-  const articlesCount = t(lang, 'home.articlesCount', { n: fmtNum(lang, shown.length) });
-  const body = `
-  <div class="hero">
-    <span class="hero-quote" aria-hidden="true">${heroQuote}</span>
-    <h1>${heroTitle}</h1>
-    <p class="tag">${heroTag}</p>
-    <div class="orn-line" aria-hidden="true">✦</div>
-    <a class="hero-start" href="${startHref}">${startHere} ${startHereArrow}</a>
-  </div>
-  <div class="wrap">
-    <section class="bookmarks-section" id="bookmarks-section" hidden aria-label="${escAttr(t(lang, 'home.yourBookmarks'))}">
+  // Featured = first (newest) article; rest become article-list rows
+  const featured = shown[0] || null;
+  const rest = shown.slice(1);
+  // Add _idx for sequential numbering
+  shown.forEach((a, i) => { a._idx = i; });
+
+  // Featured article card
+  const featuredTitle = featured ? ((lang === 'en' && featured.titleEn) ? featured.titleEn : featured.title) : '';
+  const featuredExcerpt = featured ? ((lang === 'en' && featured.excerptEn) ? featured.excerptEn : featured.excerpt) : '';
+  const featuredTag = featured ? localizeTag(lang, featured.tag) : '';
+  const featuredMinutes = featured ? t(lang, 'card.minutesShort', { n: fmtNum(lang, featured.readingTime) }) : '';
+  const featuredHref = featured ? `articles/${featured.slug}` : '';
+  const featuredHtml = featured ? `
+  <article class="featured">
+    <div class="featured-copy">
+      <div class="meta"><span>${escapeHtml(featuredTag)}</span><span class="dot"></span><span>${featuredMinutes}</span></div>
+      <h3>${escapeHtml(featuredTitle)}</h3>
+      <p>${escapeHtml(featuredExcerpt)}</p>
+      <a class="read-link" href="${featuredHref}">${t(lang, 'home.featuredReadFull')} <span aria-hidden="true">${t(lang, 'card.readArrow')}</span></a>
+    </div>
+    <a class="featured-visual" href="${featuredHref}" aria-label="${escAttr(featuredTitle)}"></a>
+  </article>` : '';
+
+  // Rest of articles as article-rows
+  const restHtml = rest.map(a => card(a, 0, lang)).join('\n');
+
+  // Total reading time
+  const totalMinutes = shown.reduce((s, a) => s + a.readingTime, 0);
+  const readingsCount = t(lang, 'home.threeReadings', { n: fmtNum(lang, shown.length), m: fmtNum(lang, totalMinutes) });
+
+  // Bookmarks section (hidden by default, populated by JS if any)
+  const bookmarksSection = `
+  <section class="bookmarks-section" id="bookmarks-section" hidden aria-label="${escAttr(t(lang, 'home.yourBookmarks'))}">
+    <div class="container">
       <div class="section-head">
         <h2>${t(lang, 'home.yourBookmarks')}</h2>
         <button class="bm-clear" id="bm-clear" type="button" aria-label="${escAttr(t(lang, 'home.clearAll'))}">${t(lang, 'home.clearAll')}</button>
       </div>
-      <div class="grid bookmarks-grid" id="bookmarks-grid"></div>
-    </section>
-    <div class="section-head">
-      <h2>${t(lang, 'home.articles')}</h2>
-      <span class="count">${articlesCount}</span>
+      <div class="bookmarks-grid" id="bookmarks-grid"></div>
     </div>
-    <div class="grid">
-${cards}
+  </section>`;
+
+  const body = `
+  <section class="hero">
+    <div class="container hero-grid">
+      <div>
+        <div class="eyebrow">${t(lang, 'home.eyebrowMagazine')}</div>
+        <h1>${t(lang, 'home.heroEm1')}<em>${t(lang, 'home.heroEm2')}</em></h1>
+        <p class="hero-lead">${t(lang, 'home.heroLead')}</p>
+        <div class="hero-actions">
+          <a class="primary-btn" href="#articles">${t(lang, 'home.discoverArticles')} <span aria-hidden="true">${t(lang, 'card.readArrow')}</span></a>
+          <a class="quiet-link" href="#about">${t(lang, 'home.knowStory')}</a>
+        </div>
+      </div>
+      <div class="hero-art" aria-hidden="true">
+        <div class="arch"></div>
+        <div class="gold-orbit"></div>
+      </div>
     </div>
-  </div>`;
+  </section>
+
+  <section class="manifesto">
+    <div class="container manifesto-row">
+      <span class="manifesto-mark" aria-hidden="true">${t(lang, 'home.manifestoMark')}</span>
+      <p>${t(lang, 'home.manifestoText')}</p>
+      <small>${t(lang, 'home.manifestoAttrib')}</small>
+    </div>
+  </section>
+
+  ${bookmarksSection}
+
+  <section class="section" id="articles">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">${t(lang, 'home.eyebrowSelection')}</div>
+          <h2>${t(lang, 'home.latestSection')}</h2>
+        </div>
+        <p>${readingsCount}</p>
+      </div>
+      ${featuredHtml}
+      <div class="article-list">
+${restHtml}
+      </div>
+    </div>
+  </section>
+
+  <section class="values" id="values">
+    <div class="container">
+      <div class="section-head">
+        <div>
+          <div class="eyebrow">${t(lang, 'home.eyebrowValues')}</div>
+          <h2>${t(lang, 'home.valuesTitle')}</h2>
+        </div>
+      </div>
+      <div class="values-grid">
+        <div class="value"><span aria-hidden="true">✦</span><h3>${t(lang, 'home.value1Title')}</h3><p>${t(lang, 'home.value1Text')}</p></div>
+        <div class="value"><span aria-hidden="true">◌</span><h3>${t(lang, 'home.value2Title')}</h3><p>${t(lang, 'home.value2Text')}</p></div>
+        <div class="value"><span aria-hidden="true">۞</span><h3>${t(lang, 'home.value3Title')}</h3><p>${t(lang, 'home.value3Text')}</p></div>
+      </div>
+    </div>
+  </section>`;
+
   return shell({
     title: t(lang, 'home.title'),
     metaDesc: t(lang, 'home.metaDesc'),
@@ -545,104 +602,73 @@ function buildArticle(a, allArticles, lang = 'ar') {
     }
   }
 
-  // Reading controls bar — Arabic-only features (tashkeel, teacher mode, exercises)
-  // For EN: only font-size + bookmark + copy-text (no tashkeel, no teacher)
-  const tashkeelBtn = (a.voweledHtml && !isEn) ? `<button class="rc-btn" id="tashkeel-btn" type="button" aria-pressed="false" title="${escAttr(t(lang, 'article.tashkeel'))}">${ICONS.tashkeel}<span>${t(lang, 'article.tashkeel')}</span></button>` : '';
-  const teacherBtn = !isEn ? `<button class="rc-btn" id="teacher-btn" type="button" title="${escAttr(t(lang, 'article.teacherMode'))}">${ICONS.teacher}<span class="rc-label">${t(lang, 'article.teacherMode')}</span></button>` : '';
-  const readingControls = `<div class="reading-controls" role="toolbar" aria-label="${escAttr(t(lang, 'article.readingControls'))}">
-    ${tashkeelBtn}
-    <div class="rc-font" role="group" aria-label="${escAttr(t(lang, 'article.fontSize'))}">
-      <button class="rc-btn rc-font-btn" id="font-dec" type="button" aria-label="${escAttr(t(lang, 'article.fontDec'))}" title="${escAttr(t(lang, 'article.fontDec'))}">${isEn ? 'A−' : 'أ−'}</button>
-      <button class="rc-btn rc-font-btn" id="font-inc" type="button" aria-label="${escAttr(t(lang, 'article.fontInc'))}" title="${escAttr(t(lang, 'article.fontInc'))}">${isEn ? 'A+' : 'أ+'}</button>
-    </div>
-    <button class="rc-btn" id="bookmark-btn" type="button" aria-pressed="false" data-slug="${escAttr(a.slug)}" data-title="${escAttr(title)}" data-icon="${escAttr(a.icon)}" data-excerpt="${escAttr(excerpt)}" data-lang="${lang}" title="${escAttr(t(lang, 'article.saveForLater'))}">${ICONS.bookmark}<span class="rc-label">${t(lang, 'article.bookmark')}</span></button>
-    <button class="rc-btn" id="copy-text-btn" type="button" title="${escAttr(t(lang, 'article.copyText'))}" data-title="${escAttr(title)}" data-lang="${lang}">${ICONS.copyText}<span class="rc-label">${t(lang, 'article.copyText')}</span></button>
-    ${teacherBtn}
+  // Reading tools (luxury design — sticky floating toolbar)
+  // Arabic: font-size +/- and tashkeel toggle. English: font-size +/- only.
+  const fontDecLabel = isEn ? 'A−' : 'أ−';
+  const fontIncLabel = isEn ? 'A+' : 'أ+';
+  const tashkeelBtnHtml = (a.voweledHtml && !isEn) ? `<button id="tashkeel-btn" type="button" aria-pressed="false" title="${escAttr(t(lang, 'article.tashkeel'))}" aria-label="${escAttr(t(lang, 'article.tashkeel'))}">◌</button>` : '';
+  const readingTools = `<div class="reading-tools" role="toolbar" aria-label="${escAttr(t(lang, 'article.readingControls'))}">
+    <button id="font-dec" type="button" aria-label="${escAttr(t(lang, 'article.fontDec'))}" title="${escAttr(t(lang, 'article.fontDec'))}">${fontDecLabel}</button>
+    <button id="font-inc" type="button" aria-label="${escAttr(t(lang, 'article.fontInc'))}" title="${escAttr(t(lang, 'article.fontInc'))}">${fontIncLabel}</button>
+    ${tashkeelBtnHtml}
+    <button id="bookmark-btn" type="button" aria-pressed="false" data-slug="${escAttr(a.slug)}" data-title="${escAttr(title)}" data-icon="${escAttr(a.icon)}" data-excerpt="${escAttr(excerpt)}" data-lang="${lang}" title="${escAttr(t(lang, 'article.saveForLater'))}" aria-label="${escAttr(t(lang, 'article.saveForLater'))}">${ICONS.bookmark}</button>
   </div>`;
 
-  // Share buttons — share URL is the current language's URL
-  const shareUrl = articleUrlBase;
-  const shareTextEnc = encodeURIComponent(`${title} — ${t(lang, 'site.name')}`);
-  const shareBlock = `<div class="share-bar" aria-label="${escAttr(t(lang, 'article.shareArticle'))}">
-    <span class="share-label">${t(lang, 'article.shareLabel')}</span>
-    <a class="share-btn" data-net="whatsapp" href="https://wa.me/?text=${shareTextEnc}%20${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnWhatsapp'))}">${ICONS.whatsapp}</a>
-    <a class="share-btn" data-net="x" href="https://twitter.com/intent/tweet?text=${shareTextEnc}&url=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnX'))}">${ICONS.x}</a>
-    <a class="share-btn" data-net="telegram" href="https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${shareTextEnc}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnTelegram'))}">${ICONS.telegram}</a>
-    <a class="share-btn" data-net="facebook" href="https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}" target="_blank" rel="noopener" aria-label="${escAttr(t(lang, 'article.shareOnFacebook'))}">${ICONS.facebook}</a>
-    <button class="share-btn" data-net="copy" type="button" aria-label="${escAttr(t(lang, 'article.copyLink'))}" data-url="${shareUrl}">${ICONS.copy}</button>
-  </div>`;
-
-  // Prev / next cards
-  const prevTitle = (x) => isEn ? (x.titleEn || x.title) : x.title;
-  const prevTag = (x) => localizeTag(lang, x.tag);
-  const prevCard = prev ? `<a class="pn-card pn-prev" href="${prev.slug}">
-    <span class="pn-card-label">${t(lang, 'article.previousArticle')}</span>
-    <span class="pn-card-title">${prevTitle(prev)}</span>
-    <span class="pn-card-meta">
-      <span class="pn-card-tag">${prevTag(prev)}</span>
-      <span class="pn-card-arrow" aria-hidden="true">${t(lang, 'article.prevArrow')}</span>
-    </span>
-  </a>` : '';
-  const nextCard = next ? `<a class="pn-card pn-next" href="${next.slug}">
-    <span class="pn-card-label">${t(lang, 'article.nextArticle')}</span>
-    <span class="pn-card-title">${prevTitle(next)}</span>
-    <span class="pn-card-meta">
-      <span class="pn-card-tag">${prevTag(next)}</span>
-      <span class="pn-card-arrow" aria-hidden="true">${t(lang, 'article.nextArrow')}</span>
-    </span>
-  </a>` : '';
-  const prevNextHtml = (prev || next) ? `
-  <nav class="prev-next" aria-label="${escAttr(t(lang, 'article.prevNextAria'))}">
-    <h2 class="pn-heading">${t(lang, 'article.readMore')}</h2>
-    <div class="pn-cards">${prevCard}${nextCard}</div>
-  </nav>` : '';
-
-  const moreSection = others.length ? `
-  <div class="more">
-    <h2>${t(lang, 'article.otherArticles')}</h2>
-    <div class="grid" style="padding-bottom:0">
-${otherCards}
-    </div>
-  </div>` : '';
-
-  // Engagement section (likes + comments) — auto-works for any article by slug
-  // Same slug used for both AR + EN (likes/comments are language-agnostic)
+  // Engagement section (luxury design: reaction-box + comments)
   const engagementHtml = `
-  <section class="engagement" id="engagement" data-slug="${escAttr(a.slug)}">
-    <div class="like-row">
+  <section class="reaction" id="engagement" data-slug="${escAttr(a.slug)}">
+    <div class="reading-container reaction-box">
+      <h2>${t(lang, 'article.reachedIdea')}</h2>
+      <p>${t(lang, 'article.likeHelps')}</p>
       <button class="like-btn" id="like-btn" type="button" aria-pressed="false" data-slug="${escAttr(a.slug)}">
         <span class="like-heart" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 21s-7-4.5-9.5-9C1 8 3 4 7 4c2 0 3.5 1 5 3 1.5-2 3-3 5-3 4 0 6 4 4.5 8C19 16.5 12 21 12 21z"/></svg></span>
         <span class="like-label">${t(lang, 'engagement.like')}</span>
       </button>
       <span class="like-count" id="like-count" data-zero="${escAttr(t(lang, 'engagement.noLikes'))}">…</span>
       <span class="like-msg" id="like-msg" role="status" aria-live="polite"></span>
-    </div>
-    <div class="comments-section">
-      <h3 class="comments-head">${t(lang, 'engagement.comments')} <span class="comments-count" id="comments-count">…</span></h3>
-      <form class="comment-form" id="comment-form" data-slug="${escAttr(a.slug)}" data-lang="${lang}">
-        <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
-        <div class="comment-form-row">
-          <input type="text" name="name" class="comment-form-name" placeholder="${escAttr(t(lang, 'engagement.commentNamePlaceholder'))}" maxlength="50" autocomplete="name">
-        </div>
-        <textarea name="text" class="comment-form-text" placeholder="${escAttr(t(lang, 'engagement.commentTextPlaceholder'))}" maxlength="1000" required></textarea>
-        <div class="comment-form-actions">
-          <span class="comment-form-hint">${t(lang, 'engagement.commentHint')}</span>
-          <button type="submit" class="comment-submit" id="comment-submit">${t(lang, 'engagement.publishComment')}</button>
-        </div>
-      </form>
-      <div class="comment-list" id="comment-list" aria-live="polite"></div>
+      <div class="comments">
+        <h3>${t(lang, 'engagement.comments')} <small>(<span id="comments-count">…</span>)</small></h3>
+        <form class="comment-form" id="comment-form" data-slug="${escAttr(a.slug)}" data-lang="${lang}">
+          <input type="text" name="website" class="hp-field" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <div class="comment-form-row">
+            <input type="text" name="name" class="comment-form-name" placeholder="${escAttr(t(lang, 'engagement.commentNamePlaceholder'))}" maxlength="50" autocomplete="name">
+          </div>
+          <textarea name="text" class="comment-form-text" placeholder="${escAttr(t(lang, 'engagement.commentTextPlaceholder'))}" maxlength="1000" required></textarea>
+          <div class="comment-form-actions">
+            <span class="comment-form-hint">${t(lang, 'engagement.commentHint')}</span>
+            <button type="submit" class="comment-submit" id="comment-submit">${t(lang, 'engagement.publishComment')}</button>
+          </div>
+        </form>
+        <div class="comment-list" id="comment-list" aria-live="polite"></div>
+      </div>
     </div>
   </section>`;
 
+  // Related articles (luxury design: related-grid of related-card)
+  const relatedTitle = (x) => isEn ? (x.titleEn || x.title) : x.title;
+  const relatedTag = (x) => localizeTag(lang, x.tag);
+  const relatedCards = others.map(x => `<a class="related-card" href="${x.slug}"><small>${escapeHtml(relatedTag(x))}</small><h3>${escapeHtml(relatedTitle(x))} <span aria-hidden="true">${t(lang, 'card.readArrow')}</span></h3></a>`).join('\n');
+  const relatedHtml = others.length ? `
+  <section class="related">
+    <div class="container">
+      <div class="section-head">
+        <h2>${t(lang, 'article.readAlso')}</h2>
+        <p>${t(lang, 'article.relatedSubtitle')}</p>
+      </div>
+      <div class="related-grid">
+${relatedCards}
+      </div>
+    </div>
+  </section>` : '';
+
   // Hidden plain-text version for "copy text" + teacher print
   const plainTextEsc = escAttr(plainText);
-  // For EN, hide the voweled data flag
   const voweledAvailable = isEn ? '0' : (a.voweledHtml ? '1' : '0');
 
-  // Determine language switcher target — if EN article exists, switch to opposite lang's article
+  // Determine language switcher target
   const langSwitchTarget = isEn
-    ? (a.hasEnglish !== false ? `/articles/${a.slug}` : `/`) // EN → AR article (slug same)
-    : (a.hasEnglish ? `/en/articles/${a.slug}` : `/en/`);    // AR → EN article if translated, else EN home
+    ? (a.hasEnglish !== false ? `/articles/${a.slug}` : `/`)
+    : (a.hasEnglish ? `/en/articles/${a.slug}` : `/en/`);
 
   const backArrow = isEn ? '←' : '→';
   const backLabel = t(lang, 'article.backToArticles');
@@ -650,42 +676,50 @@ ${otherCards}
   const authorName = t(lang, 'article.authorName');
   const writtenBy = t(lang, 'article.writtenBy');
   const readingTimeLabel = t(lang, 'article.readingTime', { n: fmtNum(lang, a.readingTime) });
+  const levelLabel = a.level ? localizeLevel(lang, a.level) : '';
+  const tagLabel = localizeTag(lang, a.tag);
 
   const body = `
-  <div class="article-shell">
-    <a class="back" href="${backHref}"><span aria-hidden="true">${backArrow}</span> ${backLabel}</a>
-    ${seriesNavHtml}
-    <header class="article-head">
-      <div class="article-head-tags">
-        <a class="card-tag" href="${categoryHref}">${localizeTag(lang, a.tag)}</a>
-        ${levelBadge(a.level, lang)}
-      </div>
+  <header class="article-hero">
+    <div class="container">
+      <a class="back" href="${backHref}">${backArrow} ${backLabel}</a>
+      <div class="eyebrow" style="margin-top:42px">${escapeHtml(tagLabel)}</div>
       <h1>${title}</h1>
-      <div class="meta">
-        <span>${writtenBy} <span class="who">${authorName}</span></span>
-        <span class="sep" aria-hidden="true">•</span>
+      <p class="article-intro">${escapeHtml(excerpt)}</p>
+      <div class="article-meta">
+        <span>${writtenBy} ${authorName}</span>
+        <span aria-hidden="true">•</span>
         <span>${readingTimeLabel}</span>
+        ${levelLabel ? `<span aria-hidden="true">•</span><span class="level-badge">${escapeHtml(levelLabel)}</span>` : ''}
       </div>
-    </header>
-    ${readingControls}
-    ${tocHtml}
-    <div class="article-body article-body-main" id="article-main">
-${renderedBody}
+      ${readingTools}
     </div>
-    ${(!isEn && a.voweledHtml) ? `<div class="article-body article-body-voweled" id="article-voweled" hidden>${a.voweledHtml}</div>` : ''}
-    ${!isEn ? a.exercisesHtml : ''}
-    ${shareBlock}
-    ${prevNextHtml}
-    ${engagementHtml}
-    <aside class="author-card">
-      <span class="avatar" aria-hidden="true">${authorInitial}</span>
-      <div class="author-info">
-        <div class="lbl">${t(lang, 'article.author')}</div>
-        <div class="name">${authorName}</div>
+  </header>
+
+  ${seriesNavHtml}
+
+  <article class="reading-container article-body" id="article-main">
+${renderedBody}
+  </article>
+  ${(!isEn && a.voweledHtml) ? `<div class="reading-container article-body" id="article-voweled" hidden>${a.voweledHtml}</div>` : ''}
+  ${!isEn ? a.exercisesHtml : ''}
+
+  <section class="reading-container">
+    <div class="author">
+      <div class="author-main">
+        <div class="avatar" aria-hidden="true">${authorInitial}</div>
+        <div>
+          <strong>${authorName}</strong>
+          <small>${t(lang, 'article.founderBio')}</small>
+        </div>
       </div>
-      <a class="author-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">ziadamrme.vercel.app <span aria-hidden="true">↗</span></a>
-    </aside>
-  </div>${moreSection}
+      <a class="read-link" href="https://ziadamrme.vercel.app" target="_blank" rel="noopener">${t(lang, 'article.personalSiteLink')} <span aria-hidden="true">↗</span></a>
+    </div>
+  </section>
+
+  ${engagementHtml}
+  ${relatedHtml}
+
   <script type="text/plain" id="plain-text-data" data-title="${escAttr(title)}" data-lang="${lang}">${plainTextEsc}</script>
   <script type="text/plain" id="voweled-available" data-available="${voweledAvailable}"></script>
   <script type="text/plain" id="article-lang" data-lang="${lang}"></script>`;
@@ -2369,7 +2403,7 @@ async function main() {
   const fontsSrcDir = path.join(__dirname, 'src', 'fonts');
   if (fs.existsSync(fontsSrcDir)) {
     for (const f of fs.readdirSync(fontsSrcDir)) {
-      if (f.endsWith('.woff2')) {
+      if (f.endsWith('.woff2') || f.endsWith('.ttf')) {
         fs.copyFileSync(path.join(fontsSrcDir, f), path.join('site', 'fonts', f));
       }
     }
