@@ -106,12 +106,12 @@ jobs:
           echo "🚀 Creating PREVIEW deployment (target=preview, NOT production)..."
 
           # Build deployment payload
+          export SHAS_FILE
           DEPLOY_PAYLOAD=$(python3 << 'PYEOF'
           import json, os
           shas_path = os.environ.get('SHAS_FILE', '/tmp/shas.json')
           with open(shas_path) as f:
               files = json.load(f)
-          # Map each file: { "file": "path", "sha": "hash" } → { "path/to/file": "hash" }
           files_dict = { item["file"]: item["sha"] for item in files }
           payload = {
               "name": "kalaam-site",
