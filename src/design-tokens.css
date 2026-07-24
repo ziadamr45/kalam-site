@@ -1,0 +1,126 @@
+/* ============================================================
+   DESIGN TOKENS — single source of truth
+   "كلام له لازمه" redesign v2 — editorial, calm, premium
+   ============================================================ */
+
+:root {
+  /* ── Color ─────────────────────────────────────────────── */
+  --bg:            #FAF9F6;   /* page background — warm paper */
+  --surface:       #F2EEE5;   /* surface near background, not white */
+  --surface-2:     #ECE6D9;   /* surface for emphasis blocks */
+  --text:          #26231F;   /* primary text — warm ink */
+  --text-muted:    #6E6A60;   /* secondary text */
+  --text-subtle:   #9A9586;   /* tertiary / meta */
+  --primary:       #166956;   /* deep green — links, key actions */
+  --primary-soft:  #1E7E68;   /* hover state */
+  --primary-tint:  #E8F0EC;   /* light green wash for badges */
+  --gold:          #9A6B1F;   /* gold — used sparingly */
+  --gold-tint:     #F2E6CF;   /* gold badge background */
+  --border:        rgba(38, 35, 31, 0.10);
+  --border-strong: rgba(38, 35, 31, 0.18);
+  --hairline:      rgba(38, 35, 31, 0.06);
+
+  /* ── Typography ─────────────────────────────────────────── */
+  /* Arabic pages: Amiri for titles+article body, Tajawal for UI */
+  /* English pages: Source Serif 4 for article body, Inter for UI */
+  --font-ar-ui:       'Tajawal', system-ui, sans-serif;
+  --font-ar-article:  'Amiri', 'Source Serif 4', Georgia, serif;
+  --font-en-ui:       'Inter', system-ui, sans-serif;
+  --font-en-article:  'Source Serif 4', 'Amiri', Georgia, serif;
+
+  /* Modular type scale (1.125 ratio) */
+  --text-xs:    0.8125rem;   /* 13px — meta, captions */
+  --text-sm:    0.875rem;    /* 14px — small UI */
+  --text-base:  1rem;        /* 16px — UI default */
+  --text-md:    1.125rem;    /* 18px — article body */
+  --text-lg:    1.25rem;     /* 20px — subheads */
+  --text-xl:    1.5rem;      /* 24px — section heads */
+  --text-2xl:   1.875rem;    /* 30px — card titles on featured */
+  --text-3xl:   2.25rem;     /* 36px — article title */
+  --text-4xl:   2.75rem;     /* 44px — hero title */
+  --text-5xl:   3.5rem;      /* 56px — display, sparingly */
+
+  /* Line-heights */
+  --lh-tight:   1.2;
+  --lh-snug:    1.35;
+  --lh-normal:  1.55;
+  --lh-relaxed: 1.75;
+  --lh-loose:   1.9;     /* article body */
+
+  /* Font weights */
+  --fw-regular:  400;
+  --fw-medium:   500;
+  --fw-bold:     700;
+  --fw-black:    800;
+
+  /* Article reading width */
+  --article-min: 680px;
+  --article-max: 760px;
+
+  /* ── Spacing (4px base) ─────────────────────────────────── */
+  --s-0:  0;
+  --s-1:  4px;
+  --s-2:  8px;
+  --s-3:  12px;
+  --s-4:  16px;
+  --s-5:  20px;
+  --s-6:  24px;
+  --s-8:  32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+  --s-20: 80px;
+  --s-24: 96px;
+  --s-32: 128px;
+
+  /* ── Container widths ──────────────────────────────────── */
+  --container-narrow:  720px;
+  --container-article: 760px;
+  --container-page:    1200px;
+  --container-wide:    1320px;
+
+  /* ── Borders ───────────────────────────────────────────── */
+  --border-w:        1px;
+  --border-w-strong: 2px;
+
+  /* ── Radius ────────────────────────────────────────────── */
+  --r-none:  0;
+  --r-xs:    2px;
+  --r-sm:    4px;
+  --r-md:    8px;
+  --r-lg:    12px;
+  --r-xl:    18px;
+  --r-full:  9999px;
+
+  /* ── Shadows (very subtle) ─────────────────────────────── */
+  --shadow-sm:  0 1px 2px rgba(38, 35, 31, 0.04);
+  --shadow-md:  0 2px 8px rgba(38, 35, 31, 0.05);
+  --shadow-lg:  0 6px 24px rgba(38, 35, 31, 0.07);
+
+  /* ── Transitions ───────────────────────────────────────── */
+  --t-fast:    120ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-normal:  200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-slow:    350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Layout ────────────────────────────────────────────── */
+  --header-h:    72px;
+  --header-h-sm: 60px;
+}
+
+/* ── Dark mode overrides ─────────────────────────────────── */
+[data-theme="dark"] {
+  --bg:            #181612;
+  --surface:       #221F1A;
+  --surface-2:     #2B2822;
+  --text:          #E8E3D7;
+  --text-muted:    #A8A294;
+  --text-subtle:   #7C7768;
+  --primary:       #4FAA92;
+  --primary-soft:  #5FBEA6;
+  --primary-tint:  rgba(79, 170, 146, 0.12);
+  --gold:          #D2A24E;
+  --gold-tint:     rgba(210, 162, 78, 0.14);
+  --border:        rgba(232, 227, 215, 0.10);
+  --border-strong: rgba(232, 227, 215, 0.18);
+  --hairline:      rgba(232, 227, 215, 0.06);
+}
